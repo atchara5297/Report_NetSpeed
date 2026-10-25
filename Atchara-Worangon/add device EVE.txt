@@ -1,0 +1,39 @@
+อุปกรณ์ใหม่ที่เพิ่มเข้า
+enable
+configure terminal
+hostname switch05
+!
+vlan 10
+!
+vlan 20
+!
+vlan 30
+!
+vlan 40
+!
+interface GigabitEthernet0/0 
+ description Trunk-to-CoreSwitch
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20,30,40
+ no shutdown
+!
+interface vlan 10
+ ip address 192.168.99.5 255.255.255.192 
+ no shutdown
+exit
+ip default-gateway 192.168.99.1 
+end
+write memory
+
+
+enable
+configure terminal
+interface GigabitEthernet1/1 
+ description Trunk-to-test1
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20,30,40
+ no shutdown
+end
+write memory

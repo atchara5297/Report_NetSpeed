@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-3xl font-semibold text-gray-800">Activity Log</h1>
+    <p class="text-gray-500 mt-1 text-sm">System activity and audit trail</p>
+  </div>
+
+  <div class="card p-6">
+    <div class="mb-5 flex items-center justify-between" style="flex-wrap:wrap;gap:14px">
+      <h2 class="text-lg font-semibold text-gray-800" style="margin:0;white-space:nowrap">Recent Activity</h2>
+
+      <div class="flex items-center" style="gap:12px;margin-left:auto;flex-wrap:wrap;justify-content:flex-end">
+        <!-- Result count -->
+        <span id="result-count" class="text-xs text-gray-400" style="white-space:nowrap"></span>
+
+        <!-- Search box -->
+        <div style="position:relative;display:flex;align-items:center;width:320px;max-width:100%">
+          <svg width="15" height="15" fill="none" stroke="var(--text-muted)" stroke-width="2" viewBox="0 0 24 24"
+               style="position:absolute;left:10px;pointer-events:none">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input type="text" id="search-input" placeholder="Search activity…"
+                 oninput="filterLogs()"
+                 style="padding:7px 30px 7px 32px;border:1px solid var(--border);border-radius:8px;font-size:13px;
+                        width:100%;outline:none;background:var(--surface-2);color:var(--text-main);transition:border .2s"
+                 onfocus="this.style.borderColor='#3A7CA5'" onblur="this.style.borderColor='var(--border)'"/>
+          <button id="clear-search-btn" onclick="clearSearch()" title="Clear"
+                  style="display:none;position:absolute;right:8px;background:none;border:none;cursor:pointer;
+                         color:var(--text-muted);font-size:16px;line-height:1;padding:2px 4px">✕</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active filters badge -->
+    <div id="filter-bar" style="display:none;margin-bottom:12px">
+      <span style="display:inline-flex;align-items:center;gap:6px;background:#EFF6FF;color:#1d4ed8;
+                   padding:4px 12px;border-radius:9999px;font-size:12px;font-weight:600">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <span id="filter-keyword"></span>
+      </span>
+    </div>
+
+    <table style="table-layout:fixed">
+      <colgroup>
+        <col style="width:13%">
+        <col style="width:13%">
+        <col style="width:15%">
+        <col style="width:19%">
+        <col style="width:40%">
+      </colgroup>
+      <thead>
+        <tr><th>Time</th><th>User</th><th>Action</th><th>Target</th><th>Details</th></tr>
+      </thead>
+      <tbody id="log-tbody">
+        <tr><td colspan="5" class="text-center text-gray-400 py-8">Loading…</td></tr>
+      </tbody>
+    </table>
+
+    <!-- Pagination -->
+    <div id="pagination-bar" style="display:none;justify-content:center;align-items:center;gap:6px;margin-top:18px;flex-wrap:wrap"></div>
+
+    <!-- Empty state -->
+    <div id="empty-state" style="display:none;padding:48px 0;text-align:center">
+      <svg width="40" height="40" fill="none" stroke="#cbd5e1" stroke-width="1.5" viewBox="0 0 24 24" style="margin:0 auto 12px">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <p class="text-gray-400" style="font-size:14px">No matching activity found</p>
+      <p class="text-gray-300" style="font-size:12px;margin-top:4px">Try a different search term</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ACTION_COLORS = {
+  'Login':           { bg:'#EFF6FF', color:'#1d4ed8' },
+  'Login Failed':    { bg:'#FEF2F2', color:'#b91c1c' },
+  'Logout':          { bg:'#F5F5F5', color:'#555' },
+  'Add Device':      { bg:'#F0FDF4', color:'#15803d' },
+  'Edit Device':     { bg:'#FFFBEB', color:'#b45309' },
+  'Delete Device':   { bg:'#FEF2F2', color:'#b91c1c' },
+  'Add Category':    { bg:'#F0FDF4', color:'#15803d' },
+  'Edit Category':   { bg:'#FFFBEB', color:'#b45309' },
+  'Delete Category': { bg:'#FEF2F2', color:'#b91c1c' },
+};
+const PAGE_SIZE = 10;
+let currentPage = 1, totalPages = 1, totalLogs = 0, query = '', searchTimer = null;
+
+function esc(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function renderPage(logs) {
+  const tbody = document.getElementById('log-tbody');
+  const empty = document.getElementById('empty-state');
+  const count = document.getElementById('result-count');
+  count.textContent = `${totalLogs.toLocaleString()} result${totalLogs !== 1 ? 's' : ''}`;
+  if (!logs.length) {
+    tbody.innerHTML = ''; empty.style.display = 'block';
+    document.getElementById('pagination-bar').style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  tbody.innerHTML = logs.map(l => {
+    const c = ACTION_COLORS[l.action] || { bg:'#F5F5F5', color:'#555' };
+    return `
+    <tr>
+      <td class="text-xs text-gray-400 whitespace-nowrap">${window.NetworkTopology.fmtLastUpdated(l.timestamp)}</td>
+      <td class="font-medium text-sm">${esc(l.user)}</td>
+      <td>
+        <span style="background:${c.bg};color:${c.color};padding:3px 10px;
+              border-radius:9999px;font-size:12px;font-weight:600">${esc(l.action)}</span>
+      </td>
+      <td class="text-sm">${esc(l.target)}</td>
+      <td class="text-sm text-gray-500">${esc(l.details)}</td>
+    </tr>`;
+  }).join('');
+  renderPagination();
+}
+
+// 1 … 4 5 [6] 7 8 … 40  (never dumps hundreds of buttons)
+function pageList() {
+  const out = [], add = p => { if (!out.includes(p)) out.push(p); };
+  add(1);
+  for (let p = currentPage - 2; p <= currentPage + 2; p++) if (p > 1 && p < totalPages) add(p);
+  if (totalPages > 1) add(totalPages);
+  const withGaps = [];
+  out.sort((a,b)=>a-b).forEach((p,i)=>{ if (i && p - out[i-1] > 1) withGaps.push('…'); withGaps.push(p); });
+  return withGaps;
+}
+
+function renderPagination() {
+  const bar = document.getElementById('pagination-bar');
+  if (totalPages <= 1) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  const btn = (label, page, o = {}) => `
+    <button onclick="goToPage(${page})" ${o.disabled ? 'disabled' : ''}
+      style="min-width:30px;padding:6px 10px;border-radius:7px;font-size:13px;cursor:${o.disabled ? 'default' : 'pointer'};
+      border:1px solid ${o.active ? 'var(--primary)' : 'var(--border)'};
+      background:${o.active ? 'var(--primary)' : 'var(--surface-2)'};
+      color:${o.disabled ? 'var(--text-faint)' : o.active ? '#fff' : 'var(--text-main)'};
+      font-weight:${o.active ? '700' : '500'};opacity:${o.disabled ? '.5' : '1'}">${label}</button>`;
+  let html = btn('Prev', currentPage - 1, { disabled: currentPage === 1 });
+  pageList().forEach(p => { html += p === '…' ? '<span style="color:var(--text-faint);padding:0 4px">…</span>' : btn(p, p, { active: p === currentPage }); });
+  html += btn('Next', currentPage + 1, { disabled: currentPage === totalPages });
+  bar.innerHTML = html;
+}
+
+function goToPage(page) {
+  currentPage = Math.min(Math.max(1, page), totalPages);
+  loadLogs();
+  document.querySelector('.card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Search runs on the server over the WHOLE log (not just what's on screen).
+function filterLogs() {
+  const q = document.getElementById('search-input').value.trim();
+  document.getElementById('clear-search-btn').style.display = q ? 'block' : 'none';
+  const filterBar = document.getElementById('filter-bar');
+  if (q) { filterBar.style.display = 'block'; document.getElementById('filter-keyword').textContent = `"${q}"`; }
+  else   { filterBar.style.display = 'none'; }
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { query = q; currentPage = 1; loadLogs(); }, 250);
+}
+
+function clearSearch() {
+  document.getElementById('search-input').value = '';
+  filterLogs();
+}
+
+async function loadLogs() {
+  try {
+    const url = `/api/activity?page=${currentPage}&page_size=${PAGE_SIZE}&q=${encodeURIComponent(query)}`;
+    const r = await fetch(url, { cache: 'no-store' });
+    if (!r.ok) return;
+    const d = await r.json();
+    currentPage = d.page; totalPages = d.pages; totalLogs = d.total;
+    renderPage(d.logs);
+  } catch (e) { /* keep what's on screen */ }
+}
+
+loadLogs();
+// Pick up new actions (logins, device/category changes) without a manual refresh.
+setInterval(() => { if (!document.hidden) loadLogs(); }, 10000);
+</script>
+{% endblock %}

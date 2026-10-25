@@ -1,0 +1,1179 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="space-y-6">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-3xl font-semibold text-gray-800">Devices</h1>
+      <p class="text-gray-500 mt-1 text-sm">Manage network devices and configurations</p>
+    </div>
+    <button onclick="openAddModal()" class="btn-accent flex items-center gap-2 page-header-action">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      Add Device
+    </button>
+  </div>
+
+  <!-- Devices Table -->
+  <div class="card p-6">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h2 class="text-lg font-semibold text-gray-800">Network Devices</h2>
+        <p class="text-sm text-gray-500 mt-0.5">Click on any device row to view IP interface details</p>
+      </div>
+      <span id="device-count" class="text-sm text-gray-400 font-medium"></span>
+    </div>
+    <div class="overflow-x-auto">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:44px">#</th>
+            <th>Device Name</th>
+            <th>IP Address</th>
+            <th>Device Type</th>
+            <th>Category</th>
+            <th>Location</th>
+            <th>Status</th>
+
+            <th>Last Updated</th>
+            <th style="width:90px;text-align:center">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="devices-tbody">
+          <tr><td colspan="9" class="text-center text-gray-400 py-8">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Network Topology -->
+  <div class="card p-6" style="background:var(--surface);border:1px solid var(--border)">
+    <div class="flex items-center gap-2 mb-5" style="flex-wrap:wrap">
+      <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:#0ea5e922">
+        <svg width="16" height="16" fill="none" stroke="var(--primary)" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="12" y1="7" x2="5" y2="17"/><line x1="12" y1="7" x2="19" y2="17"/></svg>
+      </div>
+      <div>
+        <h2 class="text-lg font-semibold" style="color:var(--text-main)">Network Topology</h2>
+        <p class="text-sm" style="color:var(--text-muted)">Router → Core Switch → Access Switches. Click a device to highlight its connection path.</p>
+      </div>
+      <!-- Legend -->
+      <div class="flex items-center gap-4 ml-3">
+        <div class="flex items-center gap-1.5">
+          <span class="legend-dot legend-online"></span>
+          <span class="text-xs font-semibold" style="color:var(--online)">Online</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="legend-dot legend-offline"></span>
+          <span class="text-xs font-semibold" style="color:#ef4444">Offline</span>
+        </div>
+      </div>
+      <!-- Zoom -->
+      <div class="ml-auto flex items-center gap-2">
+        <button onclick="topoZoom(-0.15)" style="background:var(--surface-2);color:var(--text-muted);border:1px solid var(--border);font-size:18px;padding:4px 12px;line-height:1;border-radius:6px;cursor:pointer">−</button>
+        <span id="topo-zoom-label" style="color:var(--text-muted);font-size:13px;min-width:44px;text-align:center">100%</span>
+        <button onclick="topoZoom(0.15)" style="background:var(--surface-2);color:var(--text-muted);border:1px solid var(--border);font-size:18px;padding:4px 12px;line-height:1;border-radius:6px;cursor:pointer">+</button>
+        <button onclick="topoFitToView()" style="background:var(--surface-2);color:var(--text-muted);border:1px solid var(--border);font-size:13px;padding:6px 12px;border-radius:6px;cursor:pointer">⤢ Fit to View</button>
+        <button onclick="topoZoomReset()" style="background:var(--surface-2);color:var(--text-muted);border:1px solid var(--border);font-size:13px;padding:6px 12px;border-radius:6px;cursor:pointer">Reset</button>
+      </div>
+    </div>
+
+    <!-- Auto-laid-out topology (no fixed x/y — centered, zoom/pan/fit) -->
+    <div id="topo-viewport" style="overflow:hidden;border:1px solid var(--border);border-radius:10px;
+         background:var(--surface-2);cursor:grab;position:relative;height:620px;
+         display:flex;align-items:center;justify-content:center">
+      <div id="topo-canvas" style="position:absolute;left:50%;top:50%;transition:transform .15s ease">
+        <svg id="topo-lines" style="position:absolute;top:0;left:0;overflow:visible;pointer-events:none"></svg>
+        <div id="topo-nodes" style="position:relative"></div>
+      </div>
+      <div id="topo-empty" style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;color:var(--text-muted);font-size:13px">
+        No network devices yet.
+      </div>
+    </div>
+    <p style="font-size:11px;color:var(--text-faint);margin-top:8px;text-align:center">
+      Scroll to zoom &bull; Click and drag to pan &bull; Click a device to highlight its connection path
+    </p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     ADD MODAL
+══════════════════════════════════════════════════ -->
+<div id="add-modal" class="modal-overlay">
+  <div class="modal" style="max-width:460px">
+    <div class="flex items-center justify-between mb-6">
+      <div class="flex items-center gap-3">
+        <div style="width:36px;height:36px;background:#F0FDF4;border-radius:10px;display:flex;align-items:center;justify-content:center">
+          <svg width="18" height="18" fill="none" stroke="#059669" stroke-width="2" viewBox="0 0 24 24">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </div>
+        <h2 class="text-lg font-semibold text-gray-800">Add New Device</h2>
+      </div>
+      <button onclick="closeAddModal()" style="background:none;border:none;cursor:pointer;color:#9ca3af;font-size:22px;line-height:1;padding:0">×</button>
+    </div>
+
+    <div class="space-y-4">
+      <!-- Device Name -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1.5">
+          Device Name <span style="color:#dc2626">*</span>
+        </label>
+        <input type="text" id="add-name" placeholder="e.g. Switch6"
+               oninput="clearFieldErr('add','name')"
+               style="width:100%;box-sizing:border-box"/>
+        <p class="field-err" id="add-name-err"></p>
+      </div>
+
+      <!-- IP Address -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1.5">
+          IP Address <span style="color:#dc2626">*</span>
+        </label>
+        <input type="text" id="add-ip" placeholder="e.g. 192.168.99.x"
+               oninput="clearFieldErr('add','ip')"
+               style="width:100%;box-sizing:border-box"/>
+        <p class="field-err" id="add-ip-err"></p>
+      </div>
+
+      <!-- Category -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1.5">
+          Category <span style="color:#dc2626">*</span>
+        </label>
+        <select id="add-category" oninput="clearFieldErr('add','cat')" style="width:100%;box-sizing:border-box">
+          <option value="">Loading categories...</option>
+        </select>
+        <p class="field-err" id="add-cat-err"></p>
+      </div>
+
+      <!-- Device Type -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1.5">
+          Device Type <span style="color:#dc2626">*</span>
+        </label>
+        <select id="add-type" style="width:100%;box-sizing:border-box">
+          <option value="Core Device">Core Device</option>
+          <option value="Access Device">Access Device</option>
+        </select>
+      </div>
+
+      <!-- Location -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1.5">Location</label>
+        <select id="add-location" style="width:100%;box-sizing:border-box">
+          <option value="Server Room">Server Room</option>
+          <option value="Floor 1">Floor 1</option>
+          <option value="Floor 2">Floor 2</option>
+          <option value="Floor 3">Floor 3</option>
+          <option value="Floor 4">Floor 4</option>
+        </select>
+      </div>
+
+      <!-- Connected To -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1.5">
+          Connected To <span style="color:#dc2626">*</span>
+        </label>
+        <div class="custom-select-wrap" id="add-connected-wrap">
+          <button type="button" class="custom-select-trigger" id="add-connected-trigger"
+                  onclick="toggleCustomSelect('add-connected')">
+            <span class="cs-trigger-text cs-placeholder-text" id="add-connected-triggertext">Loading devices...</span>
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="cs-chevron">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
+          <div class="custom-select-panel" id="add-connected-panel"></div>
+        </div>
+        <select id="add-connected" oninput="clearFieldErr('add','connected')" style="display:none">
+          <option value="">Loading devices...</option>
+        </select>
+        <p class="field-err" id="add-connected-err"></p>
+      </div>
+
+    </div>
+
+    <div class="flex gap-3 mt-6 pt-5" style="border-top:1px solid #f3f4f6">
+      <button onclick="closeAddModal()" class="btn-outline" style="flex:1">Cancel</button>
+      <button onclick="submitAdd()" id="add-save-btn" class="btn-primary" style="flex:1;position:relative">
+        <span id="add-loading" style="display:none;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)">
+          <svg width="16" height="16" stroke="white" viewBox="0 0 24 24" style="animation:spin 1s linear infinite">
+            <circle cx="12" cy="12" r="10" fill="none" stroke-width="3" stroke-dasharray="30 60"/>
+          </svg>
+        </span>
+        <span id="add-btn-text">Save Device</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     EDIT MODAL
+══════════════════════════════════════════════════ -->
+<div id="edit-modal" class="modal-overlay">
+  <div class="modal" style="max-width:460px">
+    <div class="flex items-center justify-between mb-6">
+      <div class="flex items-center gap-3">
+        <div style="width:36px;height:36px;background:#EFF6FF;border-radius:10px;display:flex;align-items:center;justify-content:center">
+          <svg width="18" height="18" fill="none" stroke="#3A7CA5" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
+        </div>
+        <h2 class="text-lg font-semibold text-gray-800">Edit Device</h2>
+      </div>
+      <button onclick="closeEditModal()" style="background:none;border:none;cursor:pointer;color:#9ca3af;font-size:22px;line-height:1;padding:0">×</button>
+    </div>
+
+    <input type="hidden" id="edit-id"/>
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1.5">Device Name <span style="color:#dc2626">*</span></label>
+        <input type="text" id="edit-name" placeholder="e.g. Switch6"
+               oninput="clearFieldErr('edit','name')"
+               style="width:100%;box-sizing:border-box"/>
+        <p class="field-err" id="edit-name-err"></p>
+      </div>
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1.5">IP Address <span style="color:#dc2626">*</span></label>
+        <input type="text" id="edit-ip" placeholder="e.g. 192.168.99.x"
+               oninput="clearFieldErr('edit','ip')"
+               style="width:100%;box-sizing:border-box"/>
+        <p class="field-err" id="edit-ip-err"></p>
+      </div>
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1.5">Category <span style="color:#dc2626">*</span></label>
+        <select id="edit-category" style="width:100%;box-sizing:border-box">
+          <option value="">Loading categories...</option>
+        </select>
+        <p class="field-err" id="edit-cat-err"></p>
+      </div>
+
+      <!-- Device Type -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1.5">Device Type <span style="color:#dc2626">*</span></label>
+        <select id="edit-type" style="width:100%;box-sizing:border-box">
+          <option value="Core Device">Core Device</option>
+          <option value="Access Device">Access Device</option>
+        </select>
+      </div>
+
+      <!-- Location (Floor) -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1.5">Location</label>
+        <select id="edit-location" style="width:100%;box-sizing:border-box">
+          <option value="Server Room">Server Room</option>
+          <option value="Floor 1">Floor 1</option>
+          <option value="Floor 2">Floor 2</option>
+          <option value="Floor 3">Floor 3</option>
+          <option value="Floor 4">Floor 4</option>
+        </select>
+      </div>
+
+      <!-- Connected To -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1.5">Connected To</label>
+        <div class="custom-select-wrap" id="edit-connected-wrap">
+          <button type="button" class="custom-select-trigger" id="edit-connected-trigger"
+                  onclick="toggleCustomSelect('edit-connected')">
+            <span class="cs-trigger-text cs-placeholder-text" id="edit-connected-triggertext">Loading devices...</span>
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="cs-chevron">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
+          <div class="custom-select-panel" id="edit-connected-panel"></div>
+        </div>
+        <select id="edit-connected" style="display:none">
+          <option value="">Loading devices...</option>
+        </select>
+        <p class="field-err" id="edit-connected-err"></p>
+      </div>
+
+    </div>
+
+    <div class="flex gap-3 mt-6 pt-5" style="border-top:1px solid #f3f4f6">
+      <button onclick="closeEditModal()" class="btn-outline" style="flex:1">Cancel</button>
+      <button onclick="submitEdit()" id="edit-save-btn" class="btn-primary" style="flex:1;position:relative">
+        <span id="edit-loading" style="display:none;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)">
+          <svg width="16" height="16" stroke="white" viewBox="0 0 24 24" style="animation:spin 1s linear infinite">
+            <circle cx="12" cy="12" r="10" fill="none" stroke-width="3" stroke-dasharray="30 60"/>
+          </svg>
+        </span>
+        <span id="edit-btn-text">Save Changes</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     DELETE MODAL
+══════════════════════════════════════════════════ -->
+<div id="del-modal" class="modal-overlay modal-center">
+  <div class="modal" style="max-width:380px;text-align:center">
+    <div style="width:56px;height:56px;background:#FEF2F2;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
+      <svg width="26" height="26" fill="none" stroke="#dc2626" stroke-width="2" viewBox="0 0 24 24">
+        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+        <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+      </svg>
+    </div>
+    <h2 class="text-lg font-semibold text-gray-800 mb-2">Delete Device?</h2>
+    <p class="text-sm text-gray-500 mb-6">
+      You are about to permanently delete<br>
+      <strong id="del-name" class="text-gray-800"></strong><br>
+      <span style="color:#dc2626;font-size:12px">This action cannot be undone.</span>
+    </p>
+    <div class="flex gap-3">
+      <button onclick="closeDelModal()" class="btn-outline" style="flex:1">Cancel</button>
+      <button onclick="submitDelete()" id="del-btn" style="flex:1;background:#dc2626;color:#fff;border:none;padding:8px 18px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:500">
+        Delete
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+.field-err { color:#dc2626; font-size:12px; margin-top:4px; min-height:16px; }
+
+/* ─── Custom "Connected To" dropdown ───────────────────────────────────────
+   Replaces the native <select> popup (which can be clipped by the modal's
+   own scroll area) with an in-page panel positioned with `fixed`, so it
+   always renders neatly below the field and scrolls on its own when the
+   device list is longer than the available space. */
+.custom-select-wrap { position: relative; }
+.custom-select-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: rgba(17,24,39,0.8);
+  border: 1px solid rgba(148,163,184,0.15);
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 14px;
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--text-main);
+  cursor: pointer;
+  text-align: left;
+  box-sizing: border-box;
+  transition: border-color .15s, box-shadow .15s;
+}
+.custom-select-trigger:hover { border-color: rgba(34,211,238,0.35); }
+.custom-select-wrap.open .custom-select-trigger {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-glow);
+}
+html[data-theme="light"] .custom-select-trigger {
+  background: #FFFFFF;
+  border-color: rgba(15,23,42,0.14);
+}
+.cs-trigger-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-trigger-text.cs-placeholder-text { color: var(--text-faint); }
+.cs-chevron { flex-shrink: 0; color: var(--text-faint); transition: transform .15s; }
+.custom-select-wrap.open .cs-chevron { transform: rotate(180deg); color: var(--primary); }
+
+.custom-select-panel {
+  position: fixed;
+  display: none;
+  flex-direction: column;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.45);
+  z-index: 200;
+  padding: 6px;
+}
+html[data-theme="light"] .custom-select-panel {
+  background: #FFFFFF;
+  box-shadow: 0 12px 32px rgba(15,23,42,0.18);
+}
+.custom-select-panel.open { display: flex; }
+.custom-select-option {
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13.5px;
+  color: var(--text-main);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.custom-select-option:hover { background: rgba(34,211,238,0.1); }
+.custom-select-option.selected { background: var(--sidebar-active); color: var(--primary); font-weight: 600; }
+.custom-select-option.cs-placeholder { color: var(--text-faint); }
+  /* Device name links: dark/neutral by default, blue only on hover.
+     (Classed instead of inline color so base.html's a[style*="color:#3A7CA5"]
+     !important override no longer forces them bright blue.) */
+  .dev-name-link { color: #0F172A; font-weight: 600; transition: color .15s; }
+  .dev-name-link:hover { color: #2F62D8; text-decoration: underline !important; text-underline-offset: 3px; }
+  html:not([data-theme="light"]) .dev-name-link { color: #E2E8F0; }
+  html:not([data-theme="light"]) .dev-name-link:hover { color: #22D3EE; }
+  tr:hover .dev-name-link { color: #2F62D8; }
+  html:not([data-theme="light"]) tr:hover .dev-name-link { color: #22D3EE; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let deleteTargetId = null;
+
+// ─── Field error helpers ─────────────────────────────────────────────────────
+function setFieldErr(prefix, field, msg) {
+  document.getElementById(`${prefix}-${field}-err`).textContent = msg;
+  const inp = document.getElementById(`${prefix}-${field}`);
+  if (inp) { inp.style.borderColor='#dc2626'; inp.style.boxShadow='0 0 0 3px rgba(220,38,38,.15)'; }
+}
+function clearFieldErr(prefix, field) {
+  const errEl = document.getElementById(`${prefix}-${field}-err`);
+  if (errEl) errEl.textContent = '';
+  const inp = document.getElementById(`${prefix}-${field}`);
+  if (inp) { inp.style.borderColor=''; inp.style.boxShadow=''; }
+}
+function isValidIP(ip) {
+  return /^(\d{1,3}\.){3}\d{1,3}$/.test(ip.trim()) &&
+    ip.trim().split('.').every(n => +n >= 0 && +n <= 255);
+}
+// ─── IP plan check (VLAN is detected from the IP; no VLAN field in the form) ──
+// IPs already assigned in the lab config (Config_Cisco_Device.md): ip -> owner.
+// Comes from the server (RESERVED_IPS in app.py) so both sides always agree.
+const RESERVED_IPS = {{ reserved_ips|tojson }};
+function reservedClash(ip, name, excludeId) {
+  const owner = RESERVED_IPS[normIp(ip)];
+  if (!owner) return '';
+  if (String(name || '').trim().toLowerCase() === owner.toLowerCase()) return '';
+  // editing the device that already holds this IP (unchanged) is fine
+  if (excludeId) {
+    const self = (window._allDevicesRaw || []).find(d => String(d.id) === String(excludeId));
+    if (self && normIp(self.ip_address) === normIp(ip)) return '';
+  }
+  return `${ip.trim()} is already used by ${owner}`;
+}
+const VLAN_PREFIX = '192.168.99.';
+const VLAN_BASE   = { '10': 0, '20': 64, '30': 128, '40': 192 };   // /26 blocks
+
+function vlanOfIp(ip) {
+  const p = ip.trim().split('.');
+  if (p.slice(0,3).join('.') + '.' !== VLAN_PREFIX) return 'other';
+  const last = +p[3];
+  for (const [v, base] of Object.entries(VLAN_BASE)) {
+    if (last >= base && last <= base + 63) return v;
+  }
+  return 'other';
+}
+// Returns an error string, or '' if the IP is OK.
+function ipError(ip, excludeId, isRouter, name) {
+  const v = vlanOfIp(ip);
+  if (v === 'other' && !isRouter) return 'IP must be in 192.168.99.x (e.g. 192.168.99.10)';
+  if (v !== 'other') {
+    const last = +ip.trim().split('.')[3], b = VLAN_BASE[v];
+    if (last === b || last === b + 63) return `${ip} is the network/broadcast address of VLAN ${v}`;
+    if (last === b + 1) return `${ip} is the gateway of VLAN ${v}`;
+  }
+  const rsv = reservedClash(ip, name, excludeId);
+  if (rsv) return rsv;
+  const clash = findIpClash(ip, excludeId);
+  if (clash) return `${ip.trim()} is already used by ${clash.name}`;
+  return '';
+}
+
+// Normalise an IP for comparison: drop spaces / \r / \n / zero-width chars and
+// leading zeros ("192.168.099.010" -> "192.168.99.10"), so a stored value with
+// invisible characters still matches what the user typed.
+function normIp(ip) {
+  return String(ip || '').replace(/[\s\u200B-\u200D\uFEFF]/g, '')
+    .split('.').map(n => /^\d+$/.test(n) ? String(parseInt(n, 10)) : n).join('.');
+}
+function findIpClash(ip, excludeId) {
+  const want = normIp(ip);
+  return (window._allDevicesRaw || []).find(
+    d => normIp(d.ip_address) === want && String(d.id) !== String(excludeId || ''));
+}
+
+function validateForm(prefix) {
+  const name = document.getElementById(`${prefix}-name`).value.trim();
+  const ip   = document.getElementById(`${prefix}-ip`).value.trim();
+  let ok = true;
+  const selfId = prefix === 'edit' ? document.getElementById('edit-id').value : '';
+  if (!name) { setFieldErr(prefix,'name','Device name is required'); ok=false; }
+  else {
+    const dup = (window._allDevicesRaw || []).find(
+      d => String(d.name).trim().toLowerCase() === name.toLowerCase() && String(d.id) !== String(selfId));
+    if (dup) { setFieldErr(prefix,'name',`Device name "${dup.name}" already exists`); ok=false; }
+  }
+  const cat = document.getElementById(`${prefix}-category`).value;
+  const isRouter = cat === 'Router';
+  const excludeId = prefix === 'edit' ? document.getElementById('edit-id').value : null;
+  if (!ip) { setFieldErr(prefix,'ip','IP address is required'); ok=false; }
+  else if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) { setFieldErr(prefix,'ip','Invalid IP format (e.g. 192.168.99.10)'); ok=false; }
+  else if (!isValidIP(ip)) { setFieldErr(prefix,'ip','Invalid IP: each number must be between 0 and 255'); ok=false; }
+  else {
+    const e = ipError(ip, excludeId, isRouter, name);
+    if (e) { setFieldErr(prefix,'ip',e); ok=false; }
+  }
+  if (prefix === 'add') {
+    const conn = document.getElementById('add-connected').value;
+    if (!conn && !isRouter) { setFieldErr('add','connected','Select which device this connects to'); ok=false; }
+  }
+  return ok;
+}
+
+// ─── "Connected To" dropdown (topology parent) ───────────────────────────────
+// Populated from the live device list so it always reflects the database.
+async function fetchAllDevices(force) {
+  if (window._allDevicesRaw && !force) return window._allDevicesRaw;
+  const res = await fetch('/api/devices');
+  window._allDevicesRaw = await res.json();
+  return window._allDevicesRaw;
+}
+
+async function loadConnectedToOptions(selectId, excludeId, selectedValue) {
+  const list = await fetchAllDevices();
+  const opts = list
+    .filter(d => String(d.id) !== String(excludeId || ''))
+    .map(d => `<option value="${d.id}"${String(d.id)===String(selectedValue||'')?' selected':''}>${esc(d.name)} (${esc(d.ip_address)})</option>`)
+    .join('');
+  document.getElementById(selectId).innerHTML = '<option value="">— Select device —</option>' + opts;
+  buildCustomSelectPanel(selectId);
+}
+
+// ─── Custom dropdown panel (mirrors the hidden native <select>) ──────────────
+// Keeps the real <select> as the single source of truth (value, validation,
+// oninput handlers) and just renders/positions a nicer list on top of it.
+let _csOpenId = null;
+
+function buildCustomSelectPanel(selectId) {
+  const sel  = document.getElementById(selectId);
+  const panel = document.getElementById(selectId + '-panel');
+  const triggerText = document.getElementById(selectId + '-triggertext');
+  if (!sel || !panel || !triggerText) return;
+  const options = Array.from(sel.options);
+  panel.innerHTML = options.map(o => `
+    <div class="custom-select-option${o.value===sel.value && o.value!=='' ? ' selected' : ''}${o.value===''?' cs-placeholder':''}"
+         onclick="pickCustomSelect('${selectId}', this)" data-value="${esc(o.value)}">${esc(o.textContent)}</div>`).join('');
+  const selectedOpt = options.find(o => o.value === sel.value);
+  const hasRealSelection = selectedOpt && selectedOpt.value !== '';
+  triggerText.textContent = hasRealSelection ? selectedOpt.textContent : (options[0] ? options[0].textContent : 'Select…');
+  triggerText.classList.toggle('cs-placeholder-text', !hasRealSelection);
+}
+
+function toggleCustomSelect(selectId) {
+  if (_csOpenId === selectId) { closeCustomSelect(); return; }
+  closeCustomSelect();
+  const wrap  = document.getElementById(selectId + '-wrap');
+  const panel = document.getElementById(selectId + '-panel');
+  if (!wrap || !panel) return;
+  positionCustomSelectPanel(selectId);
+  wrap.classList.add('open');
+  panel.classList.add('open');
+  _csOpenId = selectId;
+  // Keep the panel glued to its trigger while the modal (or page) scrolls
+  // or the window resizes, so it never drifts and overlaps other fields.
+  window.addEventListener('scroll', _csReposition, true);
+  window.addEventListener('resize', _csReposition, true);
+}
+
+function _csReposition() {
+  if (_csOpenId) positionCustomSelectPanel(_csOpenId);
+}
+
+function closeCustomSelect() {
+  if (!_csOpenId) return;
+  const wrap  = document.getElementById(_csOpenId + '-wrap');
+  const panel = document.getElementById(_csOpenId + '-panel');
+  if (wrap)  wrap.classList.remove('open');
+  if (panel) panel.classList.remove('open');
+  _csOpenId = null;
+  window.removeEventListener('scroll', _csReposition, true);
+  window.removeEventListener('resize', _csReposition, true);
+}
+
+// Positions the panel with `fixed` coords computed from the trigger's own
+// bounding box, so it always sits directly next to the field and is never
+// clipped by the modal's own overflow/scroll area. Opens UPWARD by
+// preference (the field usually sits near the bottom of the modal, right
+// above the Save/Cancel buttons), only dropping below when there truly
+// isn't enough room above. Its own list scrolls internally via maxHeight.
+function positionCustomSelectPanel(selectId) {
+  const trigger = document.getElementById(selectId + '-trigger');
+  const panel   = document.getElementById(selectId + '-panel');
+  if (!trigger || !panel) return;
+  const rect = trigger.getBoundingClientRect();
+  const viewportH = window.innerHeight;
+  const gap = 6, edgeMargin = 16, maxPanelH = 220, minPanelH = 100;
+  const spaceAbove = rect.top - edgeMargin;
+  const spaceBelow = viewportH - rect.bottom - edgeMargin;
+
+  panel.style.left  = rect.left + 'px';
+  panel.style.width = rect.width + 'px';
+
+  if (spaceAbove >= minPanelH || spaceAbove >= spaceBelow) {
+    panel.style.bottom = (viewportH - rect.top + gap) + 'px';
+    panel.style.top = 'auto';
+    panel.style.maxHeight = Math.max(minPanelH, Math.min(maxPanelH, spaceAbove)) + 'px';
+  } else {
+    panel.style.top = (rect.bottom + gap) + 'px';
+    panel.style.bottom = 'auto';
+    panel.style.maxHeight = Math.max(minPanelH, Math.min(maxPanelH, spaceBelow)) + 'px';
+  }
+}
+
+function pickCustomSelect(selectId, optionEl) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  sel.value = optionEl.getAttribute('data-value');
+  sel.dispatchEvent(new Event('input',  { bubbles: true }));
+  sel.dispatchEvent(new Event('change', { bubbles: true }));
+  buildCustomSelectPanel(selectId);
+  closeCustomSelect();
+}
+
+document.addEventListener('click', (e) => {
+  if (!_csOpenId) return;
+  const wrap = document.getElementById(_csOpenId + '-wrap');
+  if (wrap && !wrap.contains(e.target)) closeCustomSelect();
+});
+window.addEventListener('resize', () => { if (_csOpenId) positionCustomSelectPanel(_csOpenId); });
+// Capture-phase so this also catches the modal body's own internal scroll.
+document.addEventListener('scroll', () => { if (_csOpenId) positionCustomSelectPanel(_csOpenId); }, true);
+
+// Map category → default device type (used as fallback in edit)
+function categoryToType(cat) {
+  if (cat === 'Router') return 'Core Device';
+  return 'Access Device';
+}
+
+/* Site-wide time format: "YYYY-MM-DD HH:MM:SS" (already Thai local time
+   from the backend). Delegates to the shared helper so every page matches. */
+function fmtDT(s) { return window.NetworkTopology.fmtLastUpdated(s); }
+
+// ─── Load & render devices ───────────────────────────────────────────────────
+// live=true is the silent background refresh: it only redraws the table +
+// topology when something actually changed (status, wiring, name...), and
+// never replaces the table with an error message if a poll fails.
+let _devicesLiveSig = null;
+async function loadDevices(live = false) {
+  try {
+    const res  = await fetch('/api/devices', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const list = await res.json();
+    const sig = JSON.stringify(list.map(d => [d.id, d.name, d.ip_address, d.type, d.category, d.status, d.location, d.connected_to, d.last_updated]));
+    if (live && sig === _devicesLiveSig) return;
+    _devicesLiveSig = sig;
+    window._allDevicesRaw = list;
+    renderTopology(list);
+
+    const online = list.filter(d => d.status === 'Online').length;
+    document.getElementById('device-count').textContent =
+      `${list.length} total · ${online} online · ${list.length - online} offline`;
+
+    const tbody = document.getElementById('devices-tbody');
+    if (!list.length) {
+      tbody.innerHTML = '<tr><td colspan="9" class="text-center text-gray-400 py-10">No devices yet. Click "Add Device" to get started.</td></tr>';
+      return;
+    }
+
+    const catIcon = {
+      'Router':        `<svg width="13" height="13" fill="none" stroke="#0EA5E9" stroke-width="2" viewBox="0 0 24 24" style="display:inline;vertical-align:middle;margin-right:5px"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
+      'Switch':        `<svg width="13" height="13" fill="none" stroke="#A78BFA" stroke-width="2" viewBox="0 0 24 24" style="display:inline;vertical-align:middle;margin-right:5px"><rect x="2" y="7" width="20" height="10" rx="2"/><line x1="6" y1="12" x2="6" y2="12.01" stroke-width="3"/><line x1="10" y1="12" x2="10" y2="12.01" stroke-width="3"/><line x1="14" y1="12" x2="14" y2="12.01" stroke-width="3"/></svg>`,
+      'Access Switch': `<svg width="13" height="13" fill="none" stroke="#34D399" stroke-width="2" viewBox="0 0 24 24" style="display:inline;vertical-align:middle;margin-right:5px"><rect x="2" y="7" width="20" height="10" rx="2"/><line x1="6" y1="12" x2="6" y2="12.01"/><line x1="10" y1="12" x2="10" y2="12.01"/></svg>`,
+    };
+
+    // Store device data in a map so onclick can look it up safely (no inline JSON in HTML)
+    window._deviceMap = {};
+    list.forEach(d => { window._deviceMap[d.id] = d; });
+
+    tbody.innerHTML = list.map((d, idx) => `
+      <tr class="hover:bg-blue-50 transition cursor-pointer"
+          onclick="window.location='/devices/${d.id}/interfaces'">
+        <td class="text-sm text-gray-400" onclick="event.stopPropagation()">${idx + 1}</td>
+        <td class="font-medium" onclick="event.stopPropagation()">
+          <a href="/devices/${d.id}/interfaces"
+             class="dev-name-link" style="text-decoration:none;display:flex;align-items:center">
+            ${catIcon[d.category]||''}${esc(d.name)}
+          </a>
+        </td>
+        <td class="font-mono text-sm">${esc(d.ip_address)}</td>
+        <td class="text-sm">${esc(d.type)}</td>
+        <td class="text-sm">${esc(d.category)}</td>
+        <td class="text-sm">${esc(d.location || '-')}</td>
+        <td><span class="${d.status==='Online'?'badge-online':'badge-offline'}">${d.status}</span></td>
+        <td class="text-gray-400 text-xs" style="white-space:nowrap">${fmtDT(d.last_updated)}</td>
+        <td onclick="event.stopPropagation()">
+          <div class="flex gap-2" style="justify-content:center">
+            <button class="btn-edit" title="Edit" data-id="${d.id}"
+                    onclick="event.stopPropagation();openEditModal(window._deviceMap['${d.id}'])">
+              <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+            </button>
+            <button class="btn-danger" title="Delete" data-id="${d.id}"
+                    onclick="event.stopPropagation();openDelModal('${d.id}','${escJs(d.name)}')">
+              <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+              </svg>
+            </button>
+          </div>
+        </td>
+      </tr>`).join('');
+  } catch(err) {
+    if (live) return;   // background poll failed: keep what's on screen
+    document.getElementById('devices-tbody').innerHTML =
+      `<tr><td colspan="9" class="text-center py-8" style="color:#dc2626">⚠️ Failed to load: ${err.message}</td></tr>`;
+  }
+}
+
+function esc(s)   { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escJs(s) { return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+
+// ─── Load categories into both selects ───────────────────────────────────────
+async function loadCategoryOptions(selectedValue = '') {
+  const res  = await fetch('/api/categories');
+  const cats = await res.json();
+  const opts = cats.map(c =>
+    `<option value="${esc(c.category_name)}"${c.category_name===selectedValue?' selected':''}>${esc(c.category_name)}</option>`
+  ).join('');
+  document.getElementById('add-category').innerHTML = opts;
+  document.getElementById('edit-category').innerHTML = opts;
+  return cats;
+}
+
+
+// ─── ADD ─────────────────────────────────────────────────────────────────────
+async function openAddModal() {
+  document.getElementById('add-name').value = '';
+  document.getElementById('add-ip').value   = '';
+  document.getElementById('add-type').value = 'Access Device';
+  document.getElementById('add-location').value = 'Floor 1';
+  ['name','ip','connected'].forEach(f => clearFieldErr('add',f));
+  await loadCategoryOptions('Switch');
+  await fetchAllDevices(true);
+  clearFieldErr('add','cat');
+  // Sensible default: connect a new device to the Core Switch if one exists.
+  const core = (window._allDevicesRaw||[]).find(d => d.device_type === 'Core Device' && d.category === 'Switch');
+  await loadConnectedToOptions('add-connected', null, core ? core.id : '');
+  document.getElementById('add-modal').classList.add('open');
+  setTimeout(() => document.getElementById('add-name').focus(), 80);
+}
+function closeAddModal() { document.getElementById('add-modal').classList.remove('open'); closeCustomSelect(); }
+
+async function submitAdd() {
+  // Refresh the device list first so a device added/changed elsewhere (or by
+  // another admin) is still caught as a duplicate.
+  try { await fetchAllDevices(true); } catch (e) { /* server still re-checks */ }
+  if (!validateForm('add')) return;
+  const cat = document.getElementById('add-category').value;
+  const payload = {
+    name:        document.getElementById('add-name').value.trim(),
+    ipAddress:   document.getElementById('add-ip').value.trim(),
+    type:        document.getElementById('add-type').value,
+    category:    cat,
+    location:    document.getElementById('add-location').value || null,
+    connectedTo: document.getElementById('add-connected').value || null,
+    // New devices start Offline: they have no IP reply confirmed yet and
+    // haven't been pinged from the router.
+    status:      'Offline'
+  };
+
+  setBtnLoading('add', true);
+  try {
+    const res  = await fetch('/api/devices', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.success) {
+      closeAddModal();
+      await fetchAllDevices(true);
+      await loadDevices();
+      showToast(`✅ "${payload.name}" added to database`);
+    } else {
+      if (data.field === 'ip') setFieldErr('add', 'ip', data.error);
+      if (data.field === 'name') setFieldErr('add', 'name', data.error);
+      if (data.field === 'category') setFieldErr('add', 'cat', data.error);
+      // Field errors are already shown inside the form; popup only for other errors.
+      if (!['ip', 'name', 'category'].includes(data.field)) showToast('❌ ' + (data.error || 'Save failed'), 'error');
+    }
+  } catch(err) {
+    showToast('❌ Network error: ' + err.message, 'error');
+  } finally {
+    setBtnLoading('add', false);
+  }
+}
+
+// ─── EDIT ────────────────────────────────────────────────────────────────────
+async function openEditModal(device) {
+  document.getElementById('edit-id').value   = device.id;
+  document.getElementById('edit-name').value = device.name;
+  document.getElementById('edit-ip').value   = device.ip_address;
+
+  await loadCategoryOptions(device.category);
+
+  // Map device type → Core Device or Access Device only
+  let devType = device.type;
+  if (!['Core Device', 'Access Device', 'Client Device', 'Server', 'Router'].includes(devType)) devType = 'Access Device';
+  document.getElementById('edit-type').value = devType;
+
+  document.getElementById('edit-location').value = device.location || 'Floor 1';
+
+  await fetchAllDevices(true);
+  document.getElementById('edit-category').value = device.category;
+  clearFieldErr('edit','cat');
+  await loadConnectedToOptions('edit-connected', device.id, device.connected_to);
+
+  ['name','ip','connected'].forEach(f => clearFieldErr('edit',f));
+  document.getElementById('edit-modal').classList.add('open');
+  setTimeout(() => document.getElementById('edit-name').focus(), 80);
+}
+function closeEditModal() { document.getElementById('edit-modal').classList.remove('open'); closeCustomSelect(); }
+
+async function submitEdit() {
+  if (!validateForm('edit')) return;
+
+  const id     = document.getElementById('edit-id').value;
+  const cat2   = document.getElementById('edit-category').value;
+  const loc2   = document.getElementById('edit-location').value;
+  const payload = {
+    name:        document.getElementById('edit-name').value.trim(),
+    ipAddress:   document.getElementById('edit-ip').value.trim(),
+    type:        document.getElementById('edit-type').value,
+    category:    cat2,
+    location:    loc2 || null,
+    connectedTo: document.getElementById('edit-connected').value || null
+    // No "status" here on purpose: Online/Offline must only ever come from
+    // the router ping monitor. Editing a device's name/IP/type/location
+    // must never flip its status - that was the bug (this used to hardcode
+    // status:'Online', so saving any edit silently marked the device
+    // Online even with no ping, no eve.ng wiring, nothing).
+  };
+
+  setBtnLoading('edit', true);
+  try {
+    const res  = await fetch(`/api/devices/${id}`, {
+      method:  'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.success) {
+      closeEditModal();
+      await fetchAllDevices(true);
+      await loadDevices();
+      showToast(`✅ "${payload.name}" updated in database`);
+    } else {
+      if (data.field === 'ip') setFieldErr('edit', 'ip', data.error);
+      if (data.field === 'name') setFieldErr('edit', 'name', data.error);
+      if (data.field === 'category') setFieldErr('edit', 'cat', data.error);
+      // Field errors are already shown inside the form; popup only for other errors.
+      if (!['ip', 'name', 'category'].includes(data.field)) showToast('❌ ' + (data.error || 'Update failed'), 'error');
+    }
+  } catch(err) {
+    showToast('❌ Network error: ' + err.message, 'error');
+  } finally {
+    setBtnLoading('edit', false);
+  }
+}
+
+// ─── DELETE ──────────────────────────────────────────────────────────────────
+function openDelModal(id, name) {
+  deleteTargetId = id;
+  document.getElementById('del-name').textContent = name;
+  document.getElementById('del-modal').classList.add('open');
+}
+function closeDelModal() {
+  document.getElementById('del-modal').classList.remove('open');
+  deleteTargetId = null;
+}
+async function submitDelete() {
+  if (!deleteTargetId) return;
+  const name = document.getElementById('del-name').textContent;
+  document.getElementById('del-btn').disabled = true;
+  try {
+    const res  = await fetch(`/api/devices/${deleteTargetId}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      closeDelModal();
+      await loadDevices();
+      showToast(`🗑️ "${name}" removed from database`);
+    } else {
+      showToast('❌ ' + (data.error || 'Delete failed'), 'error');
+    }
+  } catch(err) {
+    showToast('❌ Network error: ' + err.message, 'error');
+  } finally {
+    document.getElementById('del-btn').disabled = false;
+  }
+}
+
+// ─── Loading state ───────────────────────────────────────────────────────────
+function setBtnLoading(prefix, on) {
+  document.getElementById(`${prefix}-save-btn`).disabled = on;
+  document.getElementById(`${prefix}-loading`).style.display  = on ? 'block' : 'none';
+  document.getElementById(`${prefix}-btn-text`).style.opacity = on ? '0' : '1';
+}
+
+// ─── Close modals on Escape ──────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  closeAddModal(); closeEditModal(); closeDelModal();
+});
+
+// ─── Close modals when clicking backdrop ────────────────────────────────────
+['add-modal','edit-modal','del-modal'].forEach(id => {
+  document.getElementById(id).addEventListener('click', function(e) {
+    if (e.target === this) {
+      closeAddModal(); closeEditModal(); closeDelModal();
+    }
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// NETWORK TOPOLOGY (bottom of page)
+// Auto-laid-out from the SAME /api/devices data + connected_to parent as
+// the Dashboard's topology (via the shared NetworkTopology helpers), so
+// adding/editing/deleting a device re-draws both diagrams automatically.
+// Only real network devices (Router / Core Switch / Access Switches) are
+// shown — VPCs, clients, and servers are filtered out.
+// ══════════════════════════════════════════════════════════════════════════
+const NT = window.NetworkTopology;
+let topoZoomLevel  = 1;
+let topoPanX = 0, topoPanY = 0;
+let topoSelectedId = null;
+let topoLastSig = null;   // detects when devices/connections changed -> re-center view
+let topoLayoutCache = null;
+
+const TOPO_ICONS = {
+  Router: `<svg width="20" height="20" fill="none" stroke="#38BDF8" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
+  Switch: `<svg width="20" height="20" fill="none" stroke="#A78BFA" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="10" rx="2"/><line x1="6" y1="12" x2="6" y2="12.01" stroke-width="3"/><line x1="10" y1="12" x2="10" y2="12.01" stroke-width="3"/><line x1="14" y1="12" x2="14" y2="12.01" stroke-width="3"/></svg>`,
+  Default: `<svg width="20" height="20" fill="none" stroke="#34D399" stroke-width="2" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/></svg>`
+};
+
+function applyTopoTransform(){
+  const canvas = document.getElementById('topo-canvas');
+  if (!canvas || !topoLayoutCache) return;
+  canvas.style.transform =
+    `translate(calc(-50% + ${topoPanX}px), calc(-50% + ${topoPanY}px)) scale(${topoZoomLevel})`;
+  const label = document.getElementById('topo-zoom-label');
+  if (label) label.textContent = Math.round(topoZoomLevel * 100) + '%';
+}
+function topoZoom(delta){
+  topoZoomLevel = Math.min(2.2, Math.max(0.35, +(topoZoomLevel + delta).toFixed(2)));
+  applyTopoTransform();
+}
+function topoZoomReset(){
+  topoZoomLevel = 1; topoPanX = 0; topoPanY = 0;
+  if (topoSelectedId != null) { topoClearSelection(); } else { applyTopoTransform(); }
+}
+function topoFitToView(maxScale){
+  const vp = document.getElementById('topo-viewport');
+  if (!vp || !topoLayoutCache) return;
+  const { canvasW, canvasH } = topoLayoutCache;
+  const cap = (typeof maxScale === 'number') ? maxScale : 1.3;
+  const scale = Math.min(cap, (vp.clientWidth - 40) / canvasW, (vp.clientHeight - 40) / canvasH);
+  topoZoomLevel = Math.max(0.35, +scale.toFixed(2));
+  topoPanX = 0; topoPanY = 0;
+  applyTopoTransform();
+}
+
+// Click-drag panning + scroll-to-zoom on the diagram viewport.
+(function initTopoPan(){
+  const vp = document.getElementById('topo-viewport');
+  if (!vp) return;
+  let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+  vp.addEventListener('wheel', e => {
+    e.preventDefault();
+    topoZoomLevel = Math.min(2.2, Math.max(0.35, topoZoomLevel + (e.deltaY > 0 ? -0.1 : 0.1)));
+    applyTopoTransform();
+  }, { passive:false });
+  vp.addEventListener('mousedown', e => {
+    if (e.target.closest('#topo-nodes > div')) return; // let node clicks through
+    dragging = true; sx = e.clientX; sy = e.clientY; ox = topoPanX; oy = topoPanY;
+    vp.style.cursor = 'grabbing';
+  });
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    topoPanX = ox + (e.clientX - sx); topoPanY = oy + (e.clientY - sy);
+    applyTopoTransform();
+  });
+  window.addEventListener('mouseup', () => { dragging = false; vp.style.cursor = 'grab'; });
+})();
+
+function renderTopology(rawList) {
+  const nodesEl = document.getElementById('topo-nodes');
+  const linesEl = document.getElementById('topo-lines');
+  const emptyEl = document.getElementById('topo-empty');
+  if (!nodesEl) return; // topology section not on this page
+
+  // Same filtered set as the Dashboard: Router / Core Switch / Access
+  // Switches only — never VPC / Client / Server rows.
+  const list = NT.filterDevices(rawList);
+  window._topoDevices = list;
+
+  if (!list.length) {
+    nodesEl.innerHTML = ''; linesEl.innerHTML = '';
+    emptyEl.style.display = 'flex';
+    topoLayoutCache = null;
+    return;
+  }
+  emptyEl.style.display = 'none';
+
+  const layout = NT.computeLayout(list, { nodeW: 152, nodeH: 62, hgap: 34, vgap: 92, pad: 30 });
+  NT.addClientTier(layout, list, { clientW: 122, clientH: 56, vgap: 70, pad: 30, clientsPerSwitch: 60 });
+  topoLayoutCache = layout;
+  const { byId, childrenOf, pos, canvasW, canvasH, clientPos } = layout;
+
+  const canvas = document.getElementById('topo-canvas');
+  canvas.style.width  = canvasW + 'px';
+  canvas.style.height = canvasH + 'px';
+  linesEl.setAttribute('width', canvasW);
+  linesEl.setAttribute('height', canvasH);
+  linesEl.setAttribute('viewBox', `0 0 ${canvasW} ${canvasH}`);
+
+  const activeChain = topoSelectedId != null ? NT.chainFor(topoSelectedId, byId, childrenOf) : null;
+
+  // Connector lines: colored by real Online/Offline status (green = both
+  // ends online, red = either end offline) at all times, matching the
+  // legend. Clicking a device only emphasizes its path (thicker, solid,
+  // glowing) - it never changes what color a link shows.
+  //
+  // All siblings under the same parent share one pivot point (the parent's
+  // bottom-center), so a farther sibling's horizontal segment necessarily
+  // passes straight through the x-range of any nearer sibling on the same
+  // side. With translucent colors, whichever segment is drawn LAST wins
+  // that shared stretch. Sorting so the farthest sibling is drawn first and
+  // the nearest last means each sibling's own color always paints over/on
+  // top of its own stretch - e.g. Switch04's green properly covers its own
+  // segment, and only the true exclusive stretch out to test1 stays red,
+  // instead of test1's red bleeding backward over Switch04's line.
+  const edges = [];
+  list.forEach(d => {
+    const pid = d.connected_to;
+    if (pid && pos[pid] && pos[d.id]) {
+      const p = pos[pid], c = pos[d.id];
+      const x1 = p.x + p.w / 2, y1 = p.y + p.h;
+      const x2 = c.x + c.w / 2, y2 = c.y;
+      edges.push({ d, pid, x1, y1, x2, y2, dist: Math.abs(x2 - x1) });
+    }
+  });
+  edges.sort((a, b) => b.dist - a.dist);
+
+  let linesHtml = '';
+  edges.forEach(({ d, pid, x1, y1, x2, y2 }) => {
+      const midY = y1 + (y2 - y1) / 2;
+      const bothOnline = d.status === 'Online' && byId[pid].status === 'Online';
+      const inChain = activeChain && activeChain.has(pid) && activeChain.has(d.id);
+      // Color always reflects real status (green = both ends online, red =
+      // either end offline) - matches the Online/Offline legend at all
+      // times, not just after clicking a device. Clicking only adds
+      // emphasis (thicker, solid, glowing) to that device's path; it no
+      // longer overrides the color to gray/green/red itself.
+      const baseColor = bothOnline
+        ? (isLightMode() ? '#3CCBA080' : '#5EDDB466')
+        : (isLightMode() ? '#F43F5E88' : '#F43F5E66');
+      let stroke = baseColor, width = 1.8, glow = '', dash = 'stroke-dasharray="4 3"';
+      if (inChain) {
+        stroke = bothOnline ? (isLightMode() ? '#2FBF95' : '#5EDDB4') : '#F43F5E';
+        width = 2.6;
+        dash = '';
+        glow = isLightMode() ? '' : `filter:drop-shadow(0 0 4px ${stroke}66)`;
+        if (bothOnline) glow += ';opacity:.85';
+      }
+      linesHtml += `<path d="M ${x1} ${y1} V ${midY} H ${x2} V ${y2}" stroke="${stroke}" stroke-width="${width}" fill="none" ${dash} style="${glow};transition:stroke .2s,stroke-width .2s"/>`;
+      linesHtml += `<circle cx="${x1}" cy="${y1}" r="3" fill="${stroke}"/><circle cx="${x2}" cy="${y2}" r="3" fill="${stroke}"/>`;
+  });
+  // Cosmetic "N Clients / Floor X" tier under each Access Switch.
+  Object.keys(clientPos).forEach(devId => {
+    const cp = clientPos[devId];
+    const p = pos[devId];
+    if (!p) return;
+    const x1 = p.x + p.w / 2, y1 = p.y + p.h;
+    const x2 = cp.x + cp.w / 2, y2 = cp.y;
+    const clientLine = isLightMode() ? '#CBD5E1' : '#334155';
+    // Elbow connector (same shape as every other link): the client box can
+    // sit off to the side of its switch when a device is wired in next to
+    // it, so a straight vertical drop from the switch's centre would land
+    // in empty space and look "broken". Route to the box's own centre.
+    const midY = y1 + (y2 - y1) / 2;
+    linesHtml += `<path d="M ${x1} ${y1} V ${midY} H ${x2} V ${y2}" stroke="${clientLine}" stroke-width="1.6" fill="none" stroke-dasharray="4 3"/>`;
+    linesHtml += `<circle cx="${x1}" cy="${y1}" r="3" fill="${clientLine}"/><circle cx="${x2}" cy="${y2}" r="3" fill="${clientLine}"/>`;
+  });
+  linesEl.innerHTML = linesHtml;
+
+  nodesEl.innerHTML = list.map(d => {
+    const p = pos[d.id];
+    if (!p) return '';
+    const icon = TOPO_ICONS[d.category] || TOPO_ICONS.Default;
+    const col  = d.status === 'Online' ? (isLightMode() ? '#2FBF95' : '#5EDDB4') : NT.statusColor(d.status);
+    const sel  = String(topoSelectedId) === String(d.id);
+    const off  = d.status !== 'Online';
+    const offBorder = isLightMode() ? 'rgba(225,29,72,.45)' : 'rgba(251,113,133,.50)';
+    const offBg = 'linear-gradient(rgba(244,63,94,.07),rgba(244,63,94,.07)), var(--surface)';
+    const dimmed = activeChain && !activeChain.has(d.id);
+    return `<div onclick="topoSelectNode(${d.id})"
+        style="position:absolute;left:${p.x}px;top:${p.y}px;width:${p.w}px;height:${p.h}px;
+        background:${sel ? 'var(--primary-glow)' : (off ? offBg : 'var(--surface)')};border:1.5px solid ${sel ? 'var(--primary)' : (off ? offBorder : 'var(--border)')};border-radius:10px;
+        display:flex;align-items:center;gap:8px;padding:0 10px;cursor:pointer;opacity:${dimmed ? 0.3 : 1};
+        box-shadow:${sel ? '0 0 0 3px var(--primary-glow)' : (isLightMode() ? '0 1px 3px rgba(15,23,42,0.06)' : 'none')};transition:.15s">
+      <div style="flex-shrink:0;opacity:${off ? 0.55 : 1}">${icon}</div>
+      <div style="min-width:0">
+        <div style="font-size:12.5px;font-weight:600;color:var(--text-main);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.name)}</div>
+        <div style="font-size:10.5px;color:var(--text-muted);font-family:'IBM Plex Mono', monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.ip_address)}</div>
+        <div style="display:flex;align-items:center;gap:4px;margin-top:2px">
+          <span style="width:6px;height:6px;border-radius:50%;background:${col};${isLightMode() ? '' : `box-shadow:0 0 4px ${col};`}display:inline-block"></span>
+          <span style="font-size:10px;font-weight:${off ? 700 : 500};color:${col}">${NT.statusLabel(d.status)}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('') + Object.keys(clientPos).map(devId => {
+    const cp = clientPos[devId];
+    return `<div style="position:absolute;left:${cp.x}px;top:${cp.y}px;width:${cp.w}px;height:${cp.h}px;
+        background:var(--surface);border:1px solid var(--border);border-radius:9px;
+        display:flex;align-items:center;gap:7px;padding:0 9px;opacity:${activeChain && !activeChain.has(Number(devId)) ? 0.28 : 1}">
+      <svg width="16" height="16" fill="none" stroke="var(--text-muted)" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0"><rect x="3" y="4" width="18" height="12" rx="2"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="16" x2="12" y2="20"/></svg>
+      <div style="min-width:0">
+        <div style="font-size:11.5px;font-weight:600;color:var(--text-main);white-space:nowrap">${esc(cp.label)}</div>
+        <div style="font-size:10px;color:var(--text-muted);white-space:nowrap">${esc(cp.sub)}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Whenever the set of devices / connections changes (device added, edited,
+  // deleted), re-center + re-fit the whole diagram so it is always in the
+  // middle of the viewport instead of keeping a stale pan/zoom from before.
+  // Plain node clicks (selection only) don't change the signature, so they
+  // never reset a zoom/pan the user chose.
+  const topoSig = list.map(d => d.id + ':' + (d.connected_to || 0)).join('|') + '@' + canvasW + 'x' + canvasH;
+  if (topoSig !== topoLastSig) {
+    topoLastSig = topoSig;
+    topoFitToView(1);
+  } else {
+    applyTopoTransform();
+  }
+}
+
+// Click a device -> just highlight its connection path (same as Dashboard).
+function topoSelectNode(id) {
+  topoSelectedId = id;
+  renderTopology(window._allDevicesRaw || []);
+}
+function topoClearSelection() {
+  topoSelectedId = null;
+  renderTopology(window._allDevicesRaw || []);
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') topoClearSelection(); });
+
+// ─── Init ────────────────────────────────────────────────────────────────────
+loadDevices();
+
+// Live refresh: the Online/Offline status in the table, the counter and the
+// topology all update on their own (no manual page refresh needed).
+setInterval(() => { if (!document.hidden) loadDevices(true); }, 5000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) loadDevices(true); });
+</script>
+{% endblock %}

@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="space-y-6">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between flex-wrap gap-4">
+    <div class="flex items-center gap-4">
+      <a href="/devices" style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;
+         border-radius:8px;border:1px solid var(--border,rgba(99,143,193,.13));
+         color:var(--text-muted,#7FA3C4);font-size:13px;font-weight:500;text-decoration:none;
+         background:transparent;transition:.15s"
+         onmouseover="this.style.background='var(--surface-2,#1E2E4A)'"
+         onmouseout="this.style.background='transparent'">
+        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>Back
+      </a>
+      <div>
+        <h1 class="text-3xl font-semibold text-gray-800">{{ device.device_name }}</h1>
+        <p class="text-gray-500 mt-0.5 text-sm">IP Interfaces — {{ device.ip_address }}</p>
+      </div>
+    </div>
+    <span class="page-header-action {{ 'badge-online' if device.status == 'Online' else 'badge-offline' }}"
+          style="font-size:14px;padding:5px 16px">
+      {{ device.status }}
+    </span>
+  </div>
+
+  <!-- IP Interface Table -->
+  <div class="card p-6">
+    <div class="flex items-center gap-3 mb-5">
+      <div style="width:34px;height:34px;border-radius:9px;background:rgba(14,165,233,.12);
+                  display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="17" height="17" fill="none" stroke="var(--primary,#0EA5E9)" stroke-width="2" viewBox="0 0 24 24">
+          <rect x="2" y="7" width="20" height="10" rx="2"/>
+          <line x1="6" y1="12" x2="6" y2="12.01" stroke-width="3"/>
+          <line x1="10" y1="12" x2="10" y2="12.01" stroke-width="3"/>
+          <line x1="14" y1="12" x2="14" y2="12.01" stroke-width="3"/>
+        </svg>
+      </div>
+      <div>
+        <h2 class="text-lg font-semibold text-gray-800">IP Interface Table</h2>
+        <p style="font-size:12px;color:var(--text-faint,#4A6D8C);margin-top:2px">
+          {{ interfaces|length }} interface{{ 's' if interfaces|length != 1 else '' }} found
+        </p>
+      </div>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table>
+        <thead>
+          <tr>
+            <th style="min-width:200px">Interface</th>
+            <th style="min-width:150px">IP Address</th>
+            <th style="width:70px">OK?</th>
+            <th style="width:90px">Method</th>
+            <th style="min-width:180px">Status</th>
+            <th style="width:90px">Protocol</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for iface in interfaces %}
+          <tr>
+            <td style="font-family:monospace;font-size:13px;font-weight:500;color:var(--text-main,#E2EBF8)">
+              {{ iface.interface }}
+            </td>
+            <td style="font-family:monospace;font-size:13px;
+                       color:{{ 'var(--primary,#0EA5E9)' if iface.ip_address != 'unassigned' else 'var(--text-faint,#4A6D8C)' }}">
+              {{ iface.ip_address }}
+            </td>
+            <td>
+              <span style="font-size:12px;font-weight:700;
+                           color:{{ '#34D399' if iface.ok == 'YES' else '#F87171' }}">
+                {{ iface.ok }}
+              </span>
+            </td>
+            <td style="font-size:13px;color:var(--text-muted,#7FA3C4)">{{ iface.method }}</td>
+            <td>
+              {% if iface.status == 'up' %}
+                <span style="color:#34D399;font-size:13px;font-weight:600">▲ up</span>
+              {% elif 'administratively' in iface.status %}
+                <span style="color:#F87171;font-size:13px;font-weight:500">⊘ administratively down</span>
+              {% else %}
+                <span style="color:#F87171;font-size:13px;font-weight:600">▼ {{ iface.status }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if iface.protocol == 'up' %}
+                <span style="color:#34D399;font-size:13px;font-weight:600">▲ up</span>
+              {% else %}
+                <span style="color:#F87171;font-size:13px;font-weight:600">▼ {{ iface.protocol }}</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Network Monitoring System</title>
+  <script>
+    // Apply saved theme before first paint to avoid a flash of the wrong mode
+    (function(){
+      try{
+        if(localStorage.getItem('nm-theme') === 'light'){
+          document.documentElement.setAttribute('data-theme','light');
+        }
+        // Just switched theme? fade the new page in instead of a hard flash.
+        if(sessionStorage.getItem('nm-fade')){
+          sessionStorage.removeItem('nm-fade');
+          document.documentElement.classList.add('nm-fade');
+        }
+      }catch(e){}
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      /* 🔵 Primary (Neon Blue) */
+      --primary:      #22D3EE;
+      --primary-dark: #06B6D4;
+      --primary-glow: rgba(34,211,238,0.28);
+
+      /* 🔷 Secondary (Royal Blue) */
+      --secondary:      #3B82F6;
+      --secondary-glow: rgba(59,130,246,0.28);
+
+      /* Brand gradient (cyan -> blue). Light mode restores the original below */
+      --grad: linear-gradient(135deg, #22D3EE, #3B82F6);
+
+      /* 🟢 Accent (Success) */
+      --accent:      #10B981;
+      --accent-dark: #059669;
+
+      /* 🔴 Danger */
+      --danger:    #F43F5E;
+      --danger-bg: rgba(244,63,94,0.15);
+
+      /* 🌑 Background */
+      --body-bg:   #04111F;
+      --sidebar-bg:#04111F;
+
+      /* Sidebar states */
+      --sidebar-hover:  rgba(34,211,238,0.08);
+      --sidebar-active: rgba(34,211,238,0.14);
+
+      /* 🧊 Surface Layers */
+      --surface:   #0B2239;
+      --surface-2: #0A1E35;
+
+      /* 🧱 Border */
+      --border: rgba(120,185,235,0.14);
+
+      /* ✍️ Text */
+      --text-main:  #E8F3FF;
+      --text-muted: #8FB0D0;
+      --text-faint: #6C8DB0;
+    }
+
+    /* ══════════════ LIGHT MODE ══════════════
+       Softer, low-glare palette: body background is a gentle warm-grey
+       (not stark white) to cut screen glare, text uses slate rather than
+       pure black for less contrast fatigue, and accent colours are
+       slightly muted so nothing fights for attention. */
+    html[data-theme="light"] {
+      --primary:      #2F62D8;
+      --primary-dark: #1E4FBF;
+      --primary-glow: rgba(47,98,216,0.20);
+
+      --secondary:      #14B8C4;
+      --secondary-glow: rgba(20,184,196,0.18);
+
+      --grad: linear-gradient(135deg, #2BC4D6, #3B5BDB);
+
+      --accent:      #059669;
+      --accent-dark: #047857;
+
+      --danger:    #E11D48;
+      --danger-bg: rgba(225,29,72,0.08);
+
+      /* Lavender-white page, soft frosted cards, navy text */
+      --body-bg:    #E9EBF7;
+      --sidebar-bg: #F8F9FE;
+
+      --sidebar-hover:  rgba(47,98,216,0.06);
+      --sidebar-active: rgba(47,98,216,0.11);
+
+      --surface:   #FFFFFF;
+      --surface-2: #F4F6FD;
+
+      --border: rgba(80,100,170,0.14);
+
+      --text-main:  #1F2A52;
+      --text-muted: #5B6B8C;
+      --text-faint: #5F6F92;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      background: var(--body-bg);
+      color: var(--text-main);
+      font-family: 'Outfit', sans-serif;
+      margin: 0;
+      /* Subtle grid noise background */
+      background-image:
+        radial-gradient(ellipse 70% 45% at 12% -5%, rgba(34,211,238,0.14) 0%, transparent 60%),
+        linear-gradient(rgba(34,211,238,0.022) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(34,211,238,0.022) 1px, transparent 1px),
+        radial-gradient(ellipse 55% 45% at 100% 100%, rgba(59,130,246,0.16) 0%, transparent 65%),
+        linear-gradient(135deg, #072548 0%, #051a33 45%, #030f1d 100%);
+      background-size: 100% 100%, 40px 40px, 40px 40px, 100% 100%, 100% 100%;
+      min-height: 100vh;
+    }
+    html[data-theme="light"] body {
+      background-image:
+        radial-gradient(ellipse 70% 45% at 10% -5%, rgba(110,160,235,0.20) 0%, transparent 60%),
+        linear-gradient(rgba(70,90,160,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(70,90,160,0.03) 1px, transparent 1px),
+        radial-gradient(ellipse 60% 45% at 100% 100%, rgba(150,140,235,0.18) 0%, transparent 65%),
+        linear-gradient(135deg, #EEF0FA 0%, #E7EAF7 50%, #E2E6F5 100%);
+    }
+
+    /* ─── SIDEBAR ─── */
+    .sidebar {
+      width: 240px;
+      min-height: 100vh;
+      background: rgba(4,17,34,0.92);
+      border-right: 1px solid var(--border);
+      position: fixed;
+      top: 0;
+      left: 0;
+      display: flex;
+      flex-direction: column;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
+    html[data-theme="light"] .sidebar {
+      background: rgba(249,250,254,0.95);
+      box-shadow: 4px 0 28px rgba(80,100,170,0.10);
+    }
+
+    /* subtle left-edge glow strip */
+    .sidebar::after {
+      content: '';
+      position: absolute;
+      top: 0; right: -1px; bottom: 0;
+      width: 1px;
+      background: linear-gradient(180deg,
+        transparent 0%,
+        rgba(34,211,238,0.5) 30%,
+        rgba(59,130,246,0.5) 70%,
+        transparent 100%);
+      animation: borderPulse 4s ease-in-out infinite;
+    }
+    @keyframes borderPulse {
+      0%,100% { opacity: 0.4; }
+      50%      { opacity: 1;   }
+    }
+    /* Light mode: drop the glowing edge strip entirely — sidebar already
+       reads clearly from its own drop shadow */
+    html[data-theme="light"] .sidebar::after { display: none; }
+
+    /* ─── LOGO ─── */
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: var(--grad);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      box-shadow: 0 0 20px rgba(34,211,238,0.4), 0 0 40px rgba(59,130,246,0.22);
+      animation: logoGlow 3s ease-in-out infinite;
+    }
+    @keyframes logoGlow {
+      0%,100% { box-shadow: 0 0 20px rgba(34,211,238,0.4), 0 0 40px rgba(59,130,246,0.22); }
+      50%      { box-shadow: 0 0 28px rgba(34,211,238,0.6), 0 0 55px rgba(59,130,246,0.38); }
+    }
+    /* Light mode: flat logo badge, no pulsing glow */
+    html[data-theme="light"] .logo-icon {
+      box-shadow: 0 4px 10px rgba(47,98,216,0.30);
+      animation: none;
+    }
+
+    /* ─── NAV LINKS ─── */
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      margin: 2px 10px;
+      color: var(--text-muted);
+      border-radius: 8px;
+      text-decoration: none;
+      font-size: 13.5px;
+      font-weight: 500;
+      transition: all 0.2s cubic-bezier(.4,0,.2,1);
+      position: relative;
+    }
+    .nav-link:hover {
+      background: var(--sidebar-hover);
+      color: var(--primary);
+      transform: translateX(4px);
+    }
+    .nav-link.active {
+      background: var(--sidebar-active);
+      color: var(--primary);
+    }
+    .nav-link.active::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 20%; bottom: 20%;
+      width: 3px;
+      border-radius: 0 3px 3px 0;
+      background: linear-gradient(180deg, var(--primary), var(--secondary));
+      box-shadow: 0 0 8px var(--primary-glow);
+    }
+    html[data-theme="light"] .nav-link.active::before { box-shadow: none; }
+
+    /* ─── MAIN ─── */
+    .main-content {
+      margin-left: 240px;
+      /* Theme toggle now lives in the sidebar, so the top padding no
+         longer needs to reserve clearance for a floating button — pulled
+         in tighter so the Page Title sits higher/more balanced. */
+      padding: 16px 32px 28px;
+      min-height: 100vh;
+      position: relative;   /* anchor for the top-right theme toggle */
+    }
+
+    /* ─── CARD — Glass Effect ─── */
+    .card {
+      background: linear-gradient(160deg, rgba(14,42,74,0.86) 0%, rgba(8,29,52,0.86) 100%);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border-radius: 14px;
+      border: 1px solid rgba(120,185,235,0.14);
+      box-shadow: 0 10px 30px rgba(0,5,15,0.55), inset 0 1px 0 rgba(150,210,255,0.07), inset 0 -1px 0 rgba(0,0,0,0.25);
+      transition: box-shadow 0.2s, border-color 0.2s;
+    }
+    .card:hover {
+      border-color: rgba(34,211,238,0.28);
+      box-shadow: 0 14px 36px rgba(0,5,15,0.6), 0 0 0 1px rgba(34,211,238,0.06), 0 0 24px rgba(34,211,238,0.07);
+    }
+    .card { border-radius: 18px; }
+    html[data-theme="light"] .card {
+      background: linear-gradient(160deg, #FFFFFF 0%, #F3F6FD 100%);
+      border-color: rgba(110,130,200,0.14);
+      box-shadow: 0 10px 28px rgba(80,100,170,0.13), 0 2px 4px rgba(80,100,170,0.06), inset 0 1px 0 #FFFFFF;
+    }
+    html[data-theme="light"] .card:hover {
+      border-color: rgba(47,98,216,0.28);
+      box-shadow: 0 14px 34px rgba(80,100,170,0.17), 0 2px 4px rgba(80,100,170,0.07), inset 0 1px 0 #FFFFFF;
+    }
+
+    /* ─── BADGES ─── */
+    .badge-online {
+      background: rgba(16,185,129,0.15);
+      color: #34D399;
+      padding: 2px 10px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid rgba(16,185,129,0.25);
+    }
+    .badge-offline {
+      background: var(--danger-bg);
+      color: #FB7185;
+      padding: 2px 10px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid rgba(244,63,94,0.25);
+    }
+    /* Light Mode: the pastel green/pink used for dark backgrounds drops to
+       ~1.5:1 contrast on a white table row, so swap in the same accessible
+       success/error palette already used by the light-mode toast (below). */
+    html[data-theme="light"] .badge-online  { background:#F0FDF4; color:#047857; border-color: rgba(5,150,105,0.25); }
+    html[data-theme="light"] .badge-offline { background:#FEF2F2; color:#B91C1C; border-color: rgba(225,29,72,0.25); }
+
+    /* ─── LEGEND DOTS (topology Online/Offline key) ─── */
+    .legend-dot { display:inline-block; width:28px; height:4px; border-radius:2px; }
+    .legend-dot.legend-online  { background:var(--online); box-shadow:0 0 8px var(--online); }
+    .legend-dot.legend-offline { background:#EF4444; box-shadow:0 0 8px #EF4444; }
+    html[data-theme="light"] .legend-dot.legend-online,
+    html[data-theme="light"] .legend-dot.legend-offline { box-shadow: none; }
+
+    /* ─── BUTTONS ─── */
+    .btn-primary {
+      background: var(--grad);
+      color: #fff;
+      padding: 8px 18px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 13.5px;
+      font-weight: 600;
+      font-family: 'Outfit', sans-serif;
+      letter-spacing: .02em;
+      transition: all 0.2s cubic-bezier(.4,0,.2,1);
+      box-shadow: 0 0 14px rgba(34,211,238,0.32);
+    }
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 0 22px rgba(59,130,246,0.5), 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .btn-primary:active {
+      transform: translateY(0);
+    }
+    /* Light mode: flat elevation shadow, no colored glow */
+    html[data-theme="light"] .btn-primary {
+      box-shadow: 0 4px 12px rgba(47,98,216,0.28);
+    }
+    html[data-theme="light"] .btn-primary:hover {
+      box-shadow: 0 8px 18px rgba(47,98,216,0.36);
+    }
+
+    .btn-accent {
+      background: linear-gradient(135deg, #10B981, #059669);
+      color: #fff;
+      padding: 8px 18px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 13.5px;
+      font-weight: 600;
+      font-family: 'Outfit', sans-serif;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+      box-shadow: 0 0 12px rgba(16,185,129,0.25);
+    }
+    .btn-accent:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 0 20px rgba(16,185,129,0.4);
+    }
+    html[data-theme="light"] .btn-accent {
+      box-shadow: 0 1px 2px rgba(15,23,42,0.14);
+    }
+    html[data-theme="light"] .btn-accent:hover {
+      box-shadow: 0 4px 10px rgba(15,23,42,0.16);
+    }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      padding: 7px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13.5px;
+      font-weight: 500;
+      font-family: 'Outfit', sans-serif;
+      transition: all 0.2s;
+    }
+    .btn-outline:hover {
+      background: rgba(34,211,238,0.08);
+      color: var(--primary);
+      border-color: rgba(34,211,238,0.35);
+    }
+
+    html[data-theme="light"] .btn-outline { background: rgba(255,255,255,0.6); }
+    html[data-theme="light"] .btn-outline:hover { background: rgba(47,98,216,0.07); border-color: rgba(47,98,216,0.35); }
+    html[data-theme="light"] .btn-edit { background: rgba(47,98,216,0.09); }
+    html[data-theme="light"] .btn-edit:hover { background: rgba(47,98,216,0.17); }
+
+    .btn-danger {
+      background: var(--danger-bg);
+      color: #FB7185;
+      border: none;
+      padding: 6px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    .btn-danger:hover {
+      background: rgba(244,63,94,0.28);
+      box-shadow: 0 0 8px rgba(244,63,94,0.2);
+    }
+    html[data-theme="light"] .btn-danger {
+      background: #FEF2F2;
+      color: #DC2626; /* was #FB7185 (~2.7:1 on white) — this row-action icon sits directly in the table */
+    }
+    html[data-theme="light"] .btn-danger:hover { background: #FEE2E2; box-shadow: none; }
+
+    .btn-edit {
+      background: rgba(34,211,238,0.12);
+      color: var(--primary);
+      border: none;
+      padding: 6px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    .btn-edit:hover {
+      background: rgba(34,211,238,0.22);
+      box-shadow: 0 0 8px rgba(34,211,238,0.22);
+    }
+    html[data-theme="light"] .btn-edit:hover { box-shadow: none; }
+
+    /* ─── INPUTS ─── */
+    input, select, textarea {
+      background: rgba(6,25,46,0.85);
+      border: 1px solid rgba(120,185,235,0.18);
+      border-radius: 8px;
+      padding: 9px 12px;
+      font-size: 14px;
+      outline: none;
+      width: 100%;
+      box-sizing: border-box;
+      font-family: 'IBM Plex Mono', monospace;
+      color: var(--text-main);
+      transition: border-color .15s, box-shadow .15s;
+    }
+    input::placeholder { color: var(--text-faint); }
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-glow);
+      background: rgba(7,29,53,1);
+    }
+    select option { background: #0A1E35; color: var(--text-main); }
+    html[data-theme="light"] input,
+    html[data-theme="light"] select,
+    html[data-theme="light"] textarea {
+      background: #F8FAFE;
+      border-color: rgba(80,100,170,0.22);
+    }
+    html[data-theme="light"] input:focus,
+    html[data-theme="light"] select:focus,
+    html[data-theme="light"] textarea:focus { background: #FFFFFF; }
+    html[data-theme="light"] select option { background: #FFFFFF; color: var(--text-main); }
+    html[data-theme="light"] input[type="date"]::-webkit-calendar-picker-indicator { filter: none; }
+    input[type="date"]::-webkit-calendar-picker-indicator {
+      filter: invert(.6) sepia(1) saturate(3) hue-rotate(150deg);
+      cursor: pointer;
+    }
+
+    /* ─── TABLE ─── */
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left;
+      padding: 10px 14px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-faint);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      border-bottom: 1px solid var(--border);
+      background: rgba(34,211,238,0.045);
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    td {
+      padding: 12px 14px;
+      font-size: 13.5px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-main);
+      transition: background 0.15s;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(34,211,238,0.05); }
+
+    html[data-theme="light"] th { background: rgba(59,91,219,0.05); }
+    html[data-theme="light"] tr:hover td { background: rgba(59,91,219,0.045); }
+
+    /* ─── STAT NUMBER glow ─── */
+    .stat-number {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 28px;
+      font-weight: 500;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      filter: drop-shadow(0 0 8px rgba(34,211,238,0.35));
+    }
+    html[data-theme="light"] .stat-number { filter: none; }
+    html[data-theme="light"] .avatar-badge { box-shadow: 0 1px 3px rgba(15,23,42,0.25) !important; }
+
+    /* ─── MODAL ─── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(2,10,22,0.78);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      z-index: 50;
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      overflow-y: auto;
+      padding: 40px 16px;
+    }
+    .modal-overlay.open { display: flex; }
+    /* Small confirmation dialogs (e.g. delete prompts) center vertically
+       instead of anchoring to the top like the longer form modals. */
+    .modal-overlay.modal-center { align-items: center; }
+    .modal {
+      /* Centre every modal (Add/Edit Device, Add/Edit Category, delete
+         prompts…) in the middle of the screen, both horizontally AND
+         vertically. `margin:auto` inside the flex overlay is the "safe"
+         way to do it: short modals sit dead-centre, and a modal taller
+         than the screen simply starts at the top and scrolls instead of
+         getting its top cut off (which align-items:center would do). */
+      margin: auto;
+      background: linear-gradient(160deg, rgba(12,38,68,0.97) 0%, rgba(7,27,49,0.97) 100%);
+      border-radius: 18px;
+      padding: 28px;
+      width: 100%;
+      max-width: 440px;
+      max-height: calc(100vh - 80px);
+      overflow-y: auto;
+      border: 1px solid rgba(34,211,238,0.22);
+      box-shadow: 0 0 40px rgba(34,211,238,0.09), 0 24px 64px rgba(0,5,15,0.65);
+      animation: modalIn 0.2s cubic-bezier(.4,0,.2,1);
+      /* Content still scrolls on tall forms (e.g. Add Device), but the
+         scrollbar itself stays hidden so the right edge looks clean. */
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    .modal::-webkit-scrollbar { display: none; width: 0; height: 0; }
+    html[data-theme="light"] .modal-overlay { background: rgba(30,42,92,0.38); }
+    html[data-theme="light"] .modal {
+      background: linear-gradient(160deg, #FFFFFF 0%, #F3F6FD 100%);
+      border-color: rgba(110,130,200,0.18);
+      box-shadow: 0 0 0 1px rgba(80,100,170,0.05), 0 24px 64px rgba(50,70,140,0.24);
+    }
+    @keyframes modalIn {
+      from { transform: scale(0.95) translateY(8px); opacity: 0; }
+      to   { transform: scale(1) translateY(0);     opacity: 1; }
+    }
+
+    /* ─── TOAST ─── */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: rgba(8,29,52,0.96);
+      color: var(--text-main);
+      border: 1px solid var(--border);
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-size: 14px;
+      z-index: 999;
+      opacity: 0;
+      transition: opacity .3s, transform .3s;
+      pointer-events: none;
+      transform: translateY(8px);
+      backdrop-filter: blur(10px);
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .toast.success {
+      background: rgba(16,185,129,0.15);
+      border-color: rgba(16,185,129,0.3);
+      color: #34D399;
+    }
+    .toast.error {
+      background: var(--danger-bg);
+      border-color: rgba(244,63,94,0.3);
+      color: #FB7185;
+    }
+    html[data-theme="light"] .toast {
+      background: #FFFFFF;
+      border-color: rgba(15,23,42,0.1);
+      box-shadow: 0 8px 28px rgba(15,23,42,0.15);
+    }
+    html[data-theme="light"] .toast.success { background: #F0FDF4; border-color: rgba(5,150,105,0.25); color: #047857; }
+    html[data-theme="light"] .toast.error   { background: #FEF2F2; border-color: rgba(225,29,72,0.25); color: #DC2626; }
+
+    /* ─── SCROLLBAR ─── */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+      background: var(--grad);
+      border-radius: 3px;
+      opacity: 0.5;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Colour overrides for child templates ── */
+    .text-gray-800,.text-gray-700   { color: var(--text-main)!important }
+    .text-gray-600,.text-gray-500   { color: var(--text-muted)!important }
+    .text-gray-400                  { color: var(--text-faint)!important }
+    .bg-gray-50,.bg-gray-100,
+    .hover\:bg-blue-50:hover        { background: rgba(34,211,238,0.06)!important }
+    .border-gray-100,.border-b      { border-color: var(--border)!important }
+    .text-red-600                   { color: #FB7185!important }
+    [style*="color:#059669"]        { color: #34D399!important }
+    [style*="color:#dc2626"]        { color: #FB7185!important }
+    [style*="color:#6b7280"]        { color: var(--text-muted)!important }
+    [style*="background:#f3f4f6"]   { background: rgba(148,163,184,0.08)!important; color: var(--text-muted)!important }
+    [style*="background:#EFF6FF"]   { background: rgba(34,211,238,0.10)!important }
+    [style*="background:#F0FDF4"]   { background: rgba(16,185,129,0.08)!important }
+    [style*="background:#FEF2F2"]   { background: var(--danger-bg)!important }
+    a[style*="color:#3A7CA5"]       { color: var(--primary)!important }
+    [style*="border-top:1px solid #f3f4f6"]   { border-top: 1px solid var(--border)!important }
+    [style*="border-bottom:1px solid"]         { border-bottom-color: var(--border)!important }
+    [style*="background:#fff"]      { background: var(--surface)!important }
+    [style*="color:#374151"]        { color: var(--text-main)!important }
+    [style*="color:#9ca3af"]        { color: var(--text-faint)!important }
+    /* ─── PAGE TITLE / MAIN HEADING (H1) ───
+       Bumped up from Tailwind's text-3xl (30px/600) across every page
+       (Dashboard, Devices, Categories, Activity Log, Device detail).
+       Now that the theme toggle has moved into the sidebar, .main-content
+       no longer reserves top clearance for it, so the title also sits
+       higher on the page. */
+    h1.text-3xl, h1 {
+      color: var(--text-main)!important;
+      font-size: 35px!important;       /* up from 30px */
+      font-weight: 700!important;      /* bold — up from semibold */
+      letter-spacing: -0.01em;
+      line-height: 44px!important;   /* fixed so the toggle can be centred on the title */
+      margin: 0;
+    }
+
+    /* ─── THEME TOGGLE (round icon) + PAGE ACTION ───
+       Round 34px toggle (same markup/CSS is reused on the Login page).
+       Add Device / Add Category share one fixed size (150x40).
+         main padding-top 16px + H1 line-height 44px  -> H1 centre at 38px
+         toggle top 21px + height 34px                -> toggle centre at 38px
+         action top = 21 + 34 + 16 gap = 71px          -> margin-top 55px  */
+    :root { --pa-width: 150px; }
+
+    .theme-toggle {
+      position: absolute;
+      top: 21px;
+      right: 32px;
+      z-index: 20;
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--primary);
+      /* Dark: same frosted-glass gradient as .card + soft cyan edge, so the
+         button blends into the page instead of looking like a flat chip. */
+      background: linear-gradient(160deg, rgba(14,42,74,0.86) 0%, rgba(8,29,52,0.86) 100%);
+      border: 1px solid rgba(34,211,238,0.22);
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(34,211,238,0.10), 0 2px 8px rgba(0,5,15,0.22);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      transition: border-color .25s, box-shadow .25s, transform .2s, color .25s;
+    }
+    .theme-toggle:hover {
+      border-color: var(--primary);
+      box-shadow: 0 0 14px rgba(34,211,238,0.28), 0 2px 8px rgba(0,5,15,0.22);
+      transform: rotate(15deg);
+    }
+    html[data-theme="light"] .theme-toggle {
+      background: var(--surface);
+      border-color: var(--border);
+      box-shadow: 0 2px 8px rgba(80,100,170,0.12);
+    }
+    html[data-theme="light"] .theme-toggle:hover {
+      border-color: var(--primary);
+      box-shadow: 0 3px 10px rgba(80,100,170,0.20);
+    }
+    .theme-toggle.tt-switching { transform: scale(0.9) rotate(90deg); }
+    .theme-toggle svg { width: 16px; height: 16px; }
+    .theme-toggle .tt-sun  { display: none; }
+    .theme-toggle .tt-moon { display: block; }                                  /* dark  -> moon */
+    html[data-theme="light"] .theme-toggle .tt-sun  { display: block; }        /* light -> sun  */
+    html[data-theme="light"] .theme-toggle .tt-moon { display: none; }
+
+    /* Page action: Add Device / Add Category get an identical fixed size */
+    button.btn-accent.page-header-action {
+      width: var(--pa-width);
+      height: 40px;
+      padding: 0 16px;
+      justify-content: center;
+      white-space: nowrap;
+    }
+    .page-header-action { align-self: flex-start; margin-top: 55px; margin-right: 0; }
+
+    /* Narrow screens: toggle gets its own row above the title */
+    @media (max-width: 900px) {
+      .main-content { padding-top: 64px; }
+      .page-header-action { margin-top: 0; }
+    }
+
+    /* ── LIGHT MODE: literal (non-variable) colours used by the
+       dashboard/devices topology panels, legend chips, and zoom buttons ── */
+    html[data-theme="light"] [style*="background:#0d1117"],
+    html[data-theme="light"] [style*="background:#0a0f1a"],
+    html[data-theme="light"] [style*="background:#0d1520"],
+    html[data-theme="light"] [style*="background:#111c2e"] { background:#F3F6FD !important; }
+    html[data-theme="light"] [style*="background:#132033"] { background:#E8EFFC !important; }
+    html[data-theme="light"] [style*="background:#1e2d3d"] { background:#EAEFFA !important; }
+
+    html[data-theme="light"] [style*="1px solid #1e2d3d"],
+    html[data-theme="light"] [style*="1.5px solid #1e2d3d"] { border-color:#DCE3F3 !important; }
+    html[data-theme="light"] [style*="1px solid #334155"],
+    html[data-theme="light"] [style*="1px dashed #334155"]  { border-color:#C6D0E8 !important; }
+
+    html[data-theme="light"] [style*="color:#94a3b8"],
+    html[data-theme="light"] [style*="color:#94A3B8"] { color:#64748B !important; }
+    html[data-theme="light"] [style*="color:#E5E7EB"] { color:#1F2A52 !important; }
+    html[data-theme="light"] [style*="color:#CBD5E1"] { color:#334155 !important; }
+    html[data-theme="light"] [style*="color:#e2e8f0"] { color:#334155 !important; }
+
+    html[data-theme="light"] [stroke="#1e2d3d"],
+    html[data-theme="light"] [stroke="#334155"] { stroke:#CBD5E1 !important; }
+    html[data-theme="light"] [fill="#334155"],
+    html[data-theme="light"] [fill="#1e2d3d"]   { fill:#CBD5E1 !important; }
+
+    /* low-contrast "device type" chip (#6b7280 on #f3f4f6) needs darker
+       text + a slightly more visible chip background on a white card */
+    html[data-theme="light"] [style*="background:#f3f4f6"] {
+      background:#E9EEFA !important;
+      color:#4A5B80 !important;
+    }
+
+    /* Empty-value placeholder dash ("—") in table cells (e.g. Categories'
+       Description column) — was #d1d5db (~1.7:1 on white, barely visible) */
+    html[data-theme="light"] [style*="color:#d1d5db"] { color:#64748B !important; }
+
+    /* IP Interface table (device detail page): the bright pastel
+       green/red used for "up"/"down"/"OK" status text is tuned for a dark
+       background and is nearly unreadable (≈2:1 contrast) on the white
+       Light Mode table — swap in darker, accessible equivalents. */
+    html[data-theme="light"] [style*="color:#34D399"] { color:#047857 !important; }
+    html[data-theme="light"] [style*="color:#F87171"] { color:#B91C1C !important; }
+    html[data-theme="light"] [style*="background:#3A7CA5"] { background: var(--primary)!important; }
+    html[data-theme="light"] [style*="border:1px solid #3A7CA5"] { border-color: var(--primary)!important; }
+
+    /* ── DARK MODE ONLY: pastel pills/badges rendered via inline styles ── */
+    html:not([data-theme="light"]) [style*="background:#FFFBEB"] { background: rgba(245,158,11,0.12)!important }
+    html:not([data-theme="light"]) [style*="background:#F5F5F5"] { background: rgba(148,163,184,0.12)!important }
+    html:not([data-theme="light"]) [style*="color:#1d4ed8"] { color: #67E8F9!important }
+    html:not([data-theme="light"]) [style*="color:#b91c1c"] { color: #FB7185!important }
+    html:not([data-theme="light"]) [style*="color:#047857"] { color: #34D399!important }
+    html:not([data-theme="light"]) [style*="color:#b45309"] { color: #FBBF24!important }
+    html:not([data-theme="light"]) [style*="color:#555"]    { color: var(--text-muted)!important }
+  </style>
+
+  <style id="theme-modern">
+    /* ═══════════ MODERN MONITORING THEME (overrides, loads last) ═══════════
+       Dark  : deep slate-navy + electric sky-blue, soft aurora glow.
+       Light : crisp white + airy blue, hairline borders, blue-tinted shadows. */
+    :root {
+      --primary:#38BDF8; --primary-dark:#0EA5E9; --primary-glow:rgba(56,189,248,.30);
+      --secondary:#6366F1; --secondary-glow:rgba(99,102,241,.28);
+      --grad:linear-gradient(135deg,#38BDF8 0%,#6366F1 100%);
+      --accent:#34D399; --accent-dark:#10B981;
+      --online:#5EDDB4;
+      --danger:#FB7185; --danger-bg:rgba(251,113,133,.14);
+      --body-bg:#0A101C; --sidebar-bg:#0A101C;
+      --sidebar-hover:rgba(148,163,184,.08); --sidebar-active:rgba(56,189,248,.13);
+      --surface:#111A2B; --surface-2:#0E1626;
+      --border:rgba(148,163,184,.14);
+      --text-main:#E6EDF7; --text-muted:#94A3B8; --text-faint:#7B8BA3;
+    }
+    html[data-theme="light"] {
+      --primary:#2563EB; --primary-dark:#1D4ED8; --primary-glow:rgba(37,99,235,.18);
+      --secondary:#0EA5E9; --secondary-glow:rgba(14,165,233,.18);
+      --grad:linear-gradient(135deg,#3B82F6 0%,#06B6D4 100%);
+      --accent:#059669; --accent-dark:#047857;
+      --online:#27B38A;
+      --danger:#E11D48; --danger-bg:rgba(225,29,72,.08);
+      --body-bg:#F6F9FD; --sidebar-bg:#FFFFFF;
+      --sidebar-hover:rgba(37,99,235,.05); --sidebar-active:rgba(37,99,235,.09);
+      --surface:#FFFFFF; --surface-2:#F4F8FD;
+      --border:#E4ECF7;
+      --text-main:#0F172A; --text-muted:#52627A; --text-faint:#64748B;
+    }
+
+    /* Page background */
+    body {
+      background-color:var(--body-bg);
+      background-image:
+        radial-gradient(ellipse 60% 40% at 8% -8%, rgba(56,189,248,.16), transparent 62%),
+        radial-gradient(ellipse 50% 40% at 100% 0%, rgba(99,102,241,.14), transparent 62%),
+        radial-gradient(ellipse 55% 45% at 100% 105%, rgba(14,165,233,.10), transparent 65%),
+        linear-gradient(rgba(148,163,184,.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148,163,184,.035) 1px, transparent 1px);
+      background-size:100% 100%,100% 100%,100% 100%,44px 44px,44px 44px;
+      background-attachment:fixed;
+    }
+    html[data-theme="light"] body {
+      background-image:
+        radial-gradient(ellipse 60% 40% at 6% -8%, rgba(59,130,246,.10), transparent 62%),
+        radial-gradient(ellipse 50% 40% at 100% 0%, rgba(6,182,212,.08), transparent 62%),
+        linear-gradient(rgba(37,99,235,.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(37,99,235,.025) 1px, transparent 1px);
+      background-size:100% 100%,100% 100%,44px 44px,44px 44px;
+    }
+
+    /* Sidebar */
+    .sidebar { background:rgba(10,16,28,.80); backdrop-filter:blur(22px) saturate(140%); -webkit-backdrop-filter:blur(22px) saturate(140%); }
+    html[data-theme="light"] .sidebar { background:rgba(255,255,255,.88); box-shadow:1px 0 0 var(--border), 8px 0 32px rgba(37,99,235,.06); }
+    .nav-link { border-radius:10px; }
+    .nav-link:hover { transform:translateX(3px); color:var(--text-main); }
+    .nav-link.active { color:var(--primary); font-weight:600; background:linear-gradient(90deg,var(--sidebar-active),transparent); }
+    .nav-link.active::before { background:var(--grad); box-shadow:0 0 12px var(--primary-glow); }
+    html[data-theme="light"] .nav-link.active::before { box-shadow:0 0 8px var(--primary-glow); }
+
+    /* Cards: glass in dark, crisp white in light, lift + glowing top edge */
+    .card {
+      position:relative; border-radius:20px;
+      background:linear-gradient(165deg, rgba(20,31,52,.78), rgba(13,21,37,.82));
+      border:1px solid var(--border);
+      box-shadow:0 12px 36px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.05);
+      transition:transform .25s cubic-bezier(.2,.8,.2,1), box-shadow .25s, border-color .25s;
+      animation:tm-rise .55s cubic-bezier(.2,.8,.2,1) both;
+    }
+    .card::before {
+      content:''; position:absolute; left:24px; right:24px; top:0; height:1px; pointer-events:none;
+      background:linear-gradient(90deg, transparent, var(--primary), transparent); opacity:.55;
+    }
+    .card:hover { transform:translateY(-2px); border-color:rgba(56,189,248,.32); box-shadow:0 18px 44px rgba(0,0,0,.45), 0 0 0 1px rgba(56,189,248,.06), 0 0 36px rgba(56,189,248,.08); }
+    html[data-theme="light"] .card {
+      background:#FFFFFF; border-color:var(--border);
+      box-shadow:0 1px 2px rgba(15,23,42,.04), 0 10px 30px rgba(37,99,235,.07);
+    }
+    html[data-theme="light"] .card::before { opacity:.35; }
+    html[data-theme="light"] .card:hover { border-color:rgba(37,99,235,.28); box-shadow:0 1px 2px rgba(15,23,42,.05), 0 18px 40px rgba(37,99,235,.12); }
+    @keyframes tm-rise { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
+
+    /* Buttons */
+    .btn-primary { border-radius:10px; box-shadow:0 4px 16px rgba(56,189,248,.28); }
+    .btn-primary:hover { transform:translateY(-1px); box-shadow:0 8px 22px rgba(99,102,241,.38); filter:brightness(1.05); }
+    html[data-theme="light"] .btn-primary { box-shadow:0 4px 14px rgba(37,99,235,.25); }
+    html[data-theme="light"] .btn-primary:hover { box-shadow:0 8px 20px rgba(37,99,235,.32); }
+    .btn-outline { border-radius:10px; }
+
+
+    /* Action buttons (Add Device / Add Category): brand blue instead of off-theme bright green */
+    .btn-accent { background:var(--grad)!important; box-shadow:0 4px 16px rgba(56,189,248,.28)!important; border-radius:10px; }
+    .btn-accent:hover { transform:translateY(-1px); filter:brightness(1.05); box-shadow:0 8px 22px rgba(99,102,241,.38)!important; }
+    html[data-theme="light"] .btn-accent { box-shadow:0 4px 14px rgba(37,99,235,.25)!important; }
+    html[data-theme="light"] .btn-accent:hover { box-shadow:0 8px 20px rgba(37,99,235,.32)!important; }
+
+    /* Online badge gets a live pulsing dot */
+    .badge-online::before, .badge-offline::before {
+      content:''; display:inline-block; width:6px; height:6px; border-radius:50%;
+      margin-right:6px; vertical-align:middle; background:currentColor;
+    }
+    .badge-online::before { animation:tm-live 1.8s ease-out infinite; }
+    @keyframes tm-live { 0% { box-shadow:0 0 0 0 rgba(52,211,153,.55); } 70%,100% { box-shadow:0 0 0 7px rgba(52,211,153,0); } }
+    .badge-online { background:rgba(52,211,153,.12); color:#6EE7B7; border-color:rgba(52,211,153,.28); }
+    .badge-offline { color:#FDA4AF; border-color:rgba(251,113,133,.30); }
+    html[data-theme="light"] .badge-online { background:#ECFDF5; color:#047857; border-color:rgba(5,150,105,.22); }
+    html[data-theme="light"] .badge-offline { background:#FFF1F2; color:#BE123C; border-color:rgba(225,29,72,.22); }
+
+    /* Tables */
+    th { background:rgba(148,163,184,.06); letter-spacing:.09em; }
+    html[data-theme="light"] th { background:#F3F7FD; color:#64748B; }
+    tr:hover td { background:rgba(56,189,248,.06); }
+    html[data-theme="light"] tr:hover td { background:#F1F7FF; }
+
+    /* Inputs: modern focus ring */
+    input:focus, select:focus, textarea:focus { border-color:var(--primary); box-shadow:0 0 0 4px var(--primary-glow); outline:none; }
+
+    /* Scrollbars + selection */
+    * { scrollbar-width:thin; scrollbar-color:rgba(148,163,184,.35) transparent; }
+    ::selection { background:var(--primary-glow); }
+
+
+    /* ═══════════ TEXT SHARPNESS ONLY (fonts + sizes stay as the original) ═══════════ */
+    body { -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; text-rendering:optimizeLegibility; }
+    .stat-number { filter:none!important; }                       /* no blurry glow behind the big numbers */
+    .text-gray-400, .text-gray-500 { color:var(--text-muted)!important; }   /* clearer secondary text */
+    .text-gray-800, .text-gray-700 { color:var(--text-main)!important; }
+
+    /* Table header strip (all pages): soft brand-blue tint, muted blue-slate
+       labels and a hairline underline - noticeable, but calm and smooth. */
+    th {
+      font-family:'IBM Plex Mono', monospace;
+      font-size:11px; font-weight:700; letter-spacing:.09em;
+      padding:10px 14px;
+      transition:background .2s, color .2s;
+    }
+    /* One continuous brand-gradient wash across the whole header row (blue -> cyan,
+       the same hues as the sidebar / buttons) instead of separate flat cells. */
+    html[data-theme="light"] thead {
+      background:linear-gradient(90deg, rgba(37,99,235,.075) 0%, rgba(6,182,212,.06) 100%);
+    }
+    html:not([data-theme="light"]) thead {
+      background:linear-gradient(90deg, rgba(56,189,248,.10) 0%, rgba(99,102,241,.075) 100%);
+    }
+    html[data-theme="light"] th {
+      background:transparent;
+      color:#4E6896;
+      border-bottom:1px solid rgba(37,99,235,.13);
+    }
+    html:not([data-theme="light"]) th {
+      background:transparent;
+      color:#93AECB;
+      border-bottom:1px solid rgba(56,189,248,.18);
+    }
+    th:first-child, th:last-child { border-radius:0; }
+
+    /* ─── THEME TOGGLE — quiet / ghost style ───
+       No fill and no border at rest: just a muted icon that blends into the background.
+       A faint tint + hairline only appear on hover, so it never competes with the page. */
+    .theme-toggle,
+    html[data-theme="light"] .theme-toggle {
+      top: 20px;               /* centre lines up with the H1 (16px padding + 44px line / 2) */
+      width: 36px;
+      height: 36px;
+      background: transparent;
+      border: 1px solid transparent;
+      box-shadow: none;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      transition: background-color .3s ease, border-color .3s ease, color .3s ease, opacity .3s ease;
+    }
+    .theme-toggle { color: rgba(143,176,208,0.62); }
+    .theme-toggle:hover {
+      color: var(--primary);
+      background: rgba(148,163,184,0.10);
+      border-color: rgba(148,163,184,0.22);
+      box-shadow: none;
+      transform: none;
+    }
+    html[data-theme="light"] .theme-toggle { color: rgba(91,107,140,0.70); }
+    html[data-theme="light"] .theme-toggle:hover {
+      color: #2F62D8;
+      background: rgba(80,100,170,0.08);
+      border-color: rgba(80,100,170,0.20);
+      box-shadow: none;
+      transform: none;
+    }
+    .theme-toggle svg { width: 16px; height: 16px; }
+
+    /* Smooth theme switch: page fades out, reloads, fades back in */
+    @keyframes nm-fadein { from { opacity: 0; } to { opacity: 1; } }
+    html.nm-fade body { animation: nm-fadein .35s ease-out; }
+
+    /* ─── Page title position: same on every page ───
+       Devices / Categories put the title block and the 55px-offset action button in one
+       centred flex row, which pushed the title ~13px lower than on Dashboard / Activity Log
+       (and out of line with the theme toggle). Top-aligning that row keeps the title at the
+       same height everywhere. */
+    div:has(> .page-header-action) { align-items: flex-start !important; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .card, .badge-online::before { animation:none !important; }
+      .card:hover, .nav-link:hover { transform:none; }
+    }
+  </style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div style="padding:20px 20px 18px;border-bottom:1px solid var(--border)">
+    <div class="flex items-center gap-3">
+      <div class="logo-icon">
+        <svg width="18" height="18" fill="none" stroke="white" stroke-width="2" viewBox="0 0 24 24">
+          <rect x="2"  y="2"  width="8" height="8" rx="1.5"/>
+          <rect x="14" y="2"  width="8" height="8" rx="1.5"/>
+          <rect x="2"  y="14" width="8" height="8" rx="1.5"/>
+          <rect x="14" y="14" width="8" height="8" rx="1.5"/>
+        </svg>
+      </div>
+      <div>
+        <div style="font-family:'Outfit', sans-serif;font-weight:700;font-size:14px;letter-spacing:.02em;
+                    background:var(--grad);
+                    -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">
+          Network Monitor
+        </div>
+        <div style="font-family:'IBM Plex Mono', monospace;font-size:10px;color:var(--text-faint);letter-spacing:.05em">
+          ADMIN PANEL
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <nav class="flex-1 py-4">
+    <a href="/dashboard" class="nav-link {% if request.path=='/dashboard' %}active{% endif %}">
+      <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+      </svg>Dashboard
+    </a>
+    <a href="/devices" class="nav-link {% if '/devices' in request.path %}active{% endif %}">
+      <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <rect x="2" y="3" width="20" height="14" rx="2"/>
+        <line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+      </svg>Devices
+    </a>
+    <a href="/categories" class="nav-link {% if request.path=='/categories' %}active{% endif %}">
+      <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
+        <line x1="8" y1="18" x2="21" y2="18"/>
+        <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/>
+        <line x1="3" y1="18" x2="3.01" y2="18"/>
+      </svg>Categories
+    </a>
+    <a href="/admins" class="nav-link {% if request.path=='/admins' %}active{% endif %}">
+      <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg>Administrators
+    </a>
+    <a href="/activity" class="nav-link {% if request.path=='/activity' %}active{% endif %}">
+      <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+      </svg>Activity Log
+    </a>
+  </nav>
+
+  <div style="padding:14px 16px;border-top:1px solid var(--border)">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="avatar-badge" style="width:30px;height:30px;border-radius:50%;
+                    background:var(--grad);
+                    display:flex;align-items:center;justify-content:center;
+                    font-size:12px;font-weight:700;color:#fff;
+                    box-shadow:0 0 10px rgba(34,211,238,0.38)">
+          {{ user[0]|upper if user else 'A' }}
+        </div>
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text-main)">{{ user }}</div>
+          <div style="font-family:'IBM Plex Mono', monospace;font-size:10px;color:var(--text-faint);letter-spacing:.04em">ADMINISTRATOR</div>
+        </div>
+      </div>
+      <a href="/logout" style="color:var(--text-faint);padding:4px;transition:color .15s" title="Logout"
+         onmouseover="this.style.color='var(--danger)'" onmouseout="this.style.color='var(--text-faint)'">
+        <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+      </a>
+    </div>
+  </div>
+</aside>
+
+<main class="main-content">
+  <!-- Theme toggle: top-right, vertically centred on the page title (H1) -->
+  <button id="themeToggle" class="theme-toggle" onclick="toggleTheme()" title="Switch light / dark mode" aria-label="Switch light / dark mode">
+    <svg class="tt-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    <svg class="tt-moon" viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+  </button>
+  {% block content %}{% endblock %}
+</main>
+
+<div id="toast" class="toast"></div>
+<script>
+function toggleTheme() {
+  const html = document.documentElement;
+  const goingLight = html.getAttribute('data-theme') !== 'light';
+  try { localStorage.setItem('nm-theme', goingLight ? 'light' : 'dark'); } catch(e) {}
+
+  // Smooth switch: fade the page out, reload (so charts / topology / particles redraw in the
+  // new theme's colours), and the new page fades back in (see html.nm-fade in the head script).
+  try { sessionStorage.setItem('nm-fade', '1'); } catch(e) {}
+  document.body.style.transition = 'opacity .16s ease';
+  document.body.style.opacity = '0';
+  setTimeout(() => location.reload(), 170);
+}
+
+function showToast(msg, type='success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast show ${type}`;
+  setTimeout(() => { t.className = 'toast'; }, 3000);
+}
+
+// Chart.js global defaults — adapts to the current theme
+if (typeof Chart !== 'undefined') {
+  const isLightTheme = document.documentElement.getAttribute('data-theme') === 'light';
+  Chart.defaults.color = isLightTheme ? '#5B6B8C' : '#8FB0D0';
+  Chart.defaults.borderColor = isLightTheme ? 'rgba(80,100,170,0.10)' : 'rgba(120,185,235,0.1)';
+  Chart.defaults.font.family = "'IBM Plex Mono', monospace";
+  Chart.defaults.plugins.tooltip.backgroundColor = isLightTheme ? 'rgba(255,255,255,0.98)' : 'rgba(8,29,52,0.96)';
+  Chart.defaults.plugins.tooltip.borderColor = isLightTheme ? 'rgba(47,98,216,0.3)' : 'rgba(34,211,238,0.3)';
+  Chart.defaults.plugins.tooltip.borderWidth = 1;
+  Chart.defaults.plugins.tooltip.titleColor = isLightTheme ? '#2F62D8' : '#22D3EE';
+  Chart.defaults.plugins.tooltip.bodyColor = isLightTheme ? '#334155' : '#8FB0D0';
+  Chart.defaults.plugins.tooltip.padding = 10;
+}
+
+// Helper other pages can use to branch chart colours on the active theme
+function isLightMode() { return document.documentElement.getAttribute('data-theme') === 'light'; }
+
+// Helper: Cyber Neon chart dataset defaults
+function cyberDataset(label, data, overrides={}) {
+  return Object.assign({
+    label,
+    data,
+    borderColor: '#22D3EE',
+    backgroundColor: 'rgba(34,211,238,0.14)',
+    pointBackgroundColor: '#3B82F6',
+    pointBorderColor: '#22D3EE',
+    pointRadius: 4,
+    pointHoverRadius: 6,
+    pointHoverBackgroundColor: '#22D3EE',
+    tension: 0.4,
+    borderWidth: 2,
+  }, overrides);
+}
+</script>
+<script src="{{ url_for('static', filename='js/network-topology.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

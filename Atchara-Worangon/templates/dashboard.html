@@ -1,0 +1,991 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="space-y-6">
+
+  <!-- Header -->
+  <div>
+    <h1 class="text-3xl font-semibold text-gray-800">Dashboard</h1>
+    <div id="dashboard-subtitle" style="margin-top:6px;min-height:38px;display:flex;align-items:center">
+      <span style="color:#64748b;font-size:14px">Network monitoring and performance overview</span>
+    </div>
+  </div>
+
+  <!-- Date Filter -->
+  <div class="card p-5">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1.5">Start Date</label>
+        <input type="date" id="start-date" style="height:40px"/>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1.5">End Date</label>
+        <input type="date" id="end-date" style="height:40px"/>
+      </div>
+      <button onclick="applyFilter()" class="btn-primary" style="height:40px;padding:0 26px;font-size:14px;display:flex;align-items:center;justify-content:center;box-sizing:border-box">Apply Filter</button>
+    </div>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+    <div class="card p-5">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-sm text-gray-500 font-medium">Total Devices</span>
+        <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#EFF6FF">
+          <svg width="18" height="18" fill="none" stroke="#3A7CA5" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </div>
+      </div>
+      <div class="text-3xl font-semibold text-gray-800" id="stat-total">—</div>
+    </div>
+    <div class="card p-5">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-sm text-gray-500 font-medium">Online Devices</span>
+        <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#F0FDF4">
+          <svg width="18" height="18" fill="none" stroke="#059669" stroke-width="2" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        </div>
+      </div>
+      <div class="text-3xl font-semibold" style="color:#059669" id="stat-online">—</div>
+    </div>
+    <div class="card p-5">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-sm text-gray-500 font-medium">Offline Devices</span>
+        <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#FEF2F2">
+          <svg width="18" height="18" fill="none" stroke="#dc2626" stroke-width="2" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        </div>
+      </div>
+      <div class="text-3xl font-semibold text-red-600" id="stat-offline">—</div>
+    </div>
+    <div class="card p-5">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-sm text-gray-500 font-medium">Avg Throughput</span>
+        <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#EFF6FF">
+          <svg width="18" height="18" fill="none" stroke="#3A7CA5" stroke-width="2" viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+        </div>
+      </div>
+      <div class="text-3xl font-semibold text-gray-800"><span id="stat-throughput">—</span><span class="text-lg ml-1">Mbps</span></div>
+    </div>
+  </div>
+
+  <!-- Throughput Chart -->
+  <div class="card p-6">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h2 class="text-lg font-semibold text-gray-800">Network Throughput Overview</h2>
+        <p class="text-sm text-gray-500 mt-0.5" id="chart-subtitle">Network throughput (Mbps) — data collected every 1 minute — click a device to view its speed</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <span id="last-updated-label"></span>
+        <button id="clear-filter-btn" onclick="clearDeviceFilter()" class="btn-outline hidden" style="font-size:13px;padding:6px 14px">✕ Clear Filter</button>
+      </div>
+    </div>
+    <div id="throughput-chart-wrap" style="position:relative">
+      <div id="throughput-chart-scroll" style="overflow-x:auto;overflow-y:hidden;position:relative">
+        <canvas id="throughputChart" height="90"></canvas>
+        <div id="chart-pulse-dot" class="chart-pulse-dot"></div>
+      </div>
+      <!-- "Date" / "Time" axis title: lives OUTSIDE the scroller so it stays
+           put (centered) while the line and the tick labels scroll. -->
+      <div id="chart-x-title" class="chart-x-title"></div>
+    </div>
+  </div>
+
+  <!-- Device Overview -->
+  <div class="card p-6">
+    <div class="mb-4">
+      <h2 class="text-lg font-semibold text-gray-800">Device Overview</h2>
+      <p class="text-sm text-gray-500 mt-0.5">Click a device to filter the throughput graph. Values reflect the selected date range.</p>
+    </div>
+    <style>
+      /* Device Overview: fixed column widths so header and cells line up */
+      .ov-table { table-layout: fixed; min-width: 860px; }
+      .ov-table th, .ov-table td { vertical-align: middle; white-space: nowrap; }
+      .ov-table td { font-variant-numeric: tabular-nums; }
+      .ov-table .c-center { text-align: center; }
+    </style>
+    <div style="overflow-x:auto">
+      <table class="ov-table">
+        <colgroup>
+          <col style="width:15%"><col style="width:18%"><col style="width:14%">
+          <col style="width:20%"><col style="width:18%"><col style="width:15%">
+        </colgroup>
+        <thead>
+          <tr style="text-transform:uppercase">
+            <th>DEVICE NAME</th>
+            <th>IP ADDRESS</th>
+            <th>LOCATIONS</th>
+            <th>CURRENT THROUGHPUT</th>
+            <th>RECORD AT</th>
+            <th class="c-center">STATUS</th>
+          </tr>
+        </thead>
+        <tbody id="devices-table-body">
+          <tr><td colspan="6" class="text-center text-gray-400 py-8">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Network Topology (same device + connection data as the Devices page) -->
+  <div class="card p-6" style="background:var(--surface);border:1px solid var(--border)">
+    <div class="flex items-center gap-2 mb-5" style="flex-wrap:wrap">
+      <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:#0ea5e922">
+        <svg width="16" height="16" fill="none" stroke="var(--primary)" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="12" y1="7" x2="5" y2="17"/><line x1="12" y1="7" x2="19" y2="17"/></svg>
+      </div>
+      <div>
+        <h2 class="text-lg font-semibold" style="color:var(--text-main)">Network Topology</h2>
+        <p class="text-sm" style="color:var(--text-muted)">Router → Core Switch → Access Switches. Click a device to highlight its connection path.</p>
+      </div>
+      <!-- Legend -->
+      <div class="flex items-center gap-4 ml-3">
+        <div class="flex items-center gap-1.5">
+          <span class="legend-dot legend-online"></span>
+          <span class="text-xs font-semibold" style="color:var(--online)">Online</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="legend-dot legend-offline"></span>
+          <span class="text-xs font-semibold" style="color:#ef4444">Offline</span>
+        </div>
+      </div>
+      <!-- Zoom -->
+      <div class="ml-auto flex items-center gap-2">
+        <button onclick="dashTopoZoom(-0.15)" style="background:var(--surface-2);color:var(--text-muted);border:1px solid var(--border);font-size:18px;padding:4px 12px;line-height:1;border-radius:6px;cursor:pointer">−</button>
+        <span id="dash-topo-zoom-label" style="color:var(--text-muted);font-size:13px;min-width:44px;text-align:center">100%</span>
+        <button onclick="dashTopoZoom(0.15)" style="background:var(--surface-2);color:var(--text-muted);border:1px solid var(--border);font-size:18px;padding:4px 12px;line-height:1;border-radius:6px;cursor:pointer">+</button>
+        <button onclick="dashTopoFitToView()" style="background:var(--surface-2);color:var(--text-muted);border:1px solid var(--border);font-size:13px;padding:6px 12px;border-radius:6px;cursor:pointer">⤢ Fit to View</button>
+        <button onclick="dashTopoZoomReset()" style="background:var(--surface-2);color:var(--text-muted);border:1px solid var(--border);font-size:13px;padding:6px 12px;border-radius:6px;cursor:pointer">Reset</button>
+      </div>
+    </div>
+
+    <!-- Auto-laid-out topology (no fixed x/y — centered, zoom/pan/fit) -->
+    <div id="dash-topo-viewport"
+         style="overflow:hidden;border:1px solid var(--border);border-radius:10px;
+                background:var(--surface-2);cursor:grab;position:relative;height:620px;
+                display:flex;align-items:center;justify-content:center">
+      <div id="dash-topo-canvas" style="position:absolute;left:50%;top:50%;transition:transform .15s ease">
+        <svg id="dash-topo-lines" style="position:absolute;top:0;left:0;overflow:visible;pointer-events:none"></svg>
+        <div id="dash-topo-nodes" style="position:relative"></div>
+      </div>
+      <div id="dash-topo-empty" style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;color:var(--text-muted);font-size:13px">
+        No network devices yet.
+      </div>
+    </div>
+    <p style="font-size:11px;color:var(--text-faint);margin-top:8px;text-align:center">
+      Scroll to zoom &bull; Click and drag to pan &bull; Click a device to highlight its connection path
+    </p>
+  </div>
+
+</div>
+
+
+<style>
+@keyframes pulse-dot {
+  0%,100% { box-shadow:0 0 8px #10B981, 0 0 16px #059669; }
+  50%      { box-shadow:0 0 4px #10B981, 0 0 32px #059669, 0 0 48px #047857; }
+}
+@keyframes glow-name {
+  from { text-shadow: 0 0 8px currentColor, 0 0 20px currentColor; }
+  to   { text-shadow: 0 0 4px currentColor, 0 0 40px currentColor, 0 0 60px currentColor; }
+}
+
+/* ── "Last updated" label ──────────────────────────────────────────────
+   Plain text, no pill/dot — this is a data label, not a status badge.
+   The value only changes once a new round actually lands in the DB
+   (see renderLastUpdated()), not on every poll. */
+#last-updated-label {
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ── Throughput chart horizontal scroll (any view with >14 points) ───────
+   Kept visible (not just on hover) and a bit thicker than a normal thin
+   scrollbar, so it reads clearly as "there's more to scroll through" when
+   there are more points than fit on screen at once - just drag it. */
+#throughput-chart-scroll {
+  scrollbar-width: auto;                                   /* Firefox */
+  scrollbar-color: rgba(148,163,184,0.55) rgba(148,163,184,0.12); /* Firefox, dark */
+  padding-bottom: 8px;
+  scroll-behavior: smooth;
+}
+#throughput-chart-scroll::-webkit-scrollbar { height: 10px; width: 10px; }
+#throughput-chart-scroll::-webkit-scrollbar-track { background: rgba(148,163,184,0.12); border-radius: 999px; }
+#throughput-chart-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148,163,184,0.55);
+  border-radius: 999px;
+}
+#throughput-chart-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(34,211,238,0.75);
+}
+html[data-theme="light"] #throughput-chart-scroll {
+  scrollbar-color: rgba(100,116,139,0.5) rgba(100,116,139,0.1);      /* Firefox, light */
+}
+html[data-theme="light"] #throughput-chart-scroll::-webkit-scrollbar-track {
+  background: rgba(100,116,139,0.1);
+}
+html[data-theme="light"] #throughput-chart-scroll::-webkit-scrollbar-thumb {
+  background: rgba(100,116,139,0.5);
+}
+html[data-theme="light"] #throughput-chart-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(14,165,233,0.7);
+}
+
+/* ── Fixed x-axis title (Date / Time) ─────────────────────────────────── */
+.chart-x-title {
+  position: absolute; left: 0; right: 0; bottom: 10px;
+  text-align: center; font-size: 12px; line-height: 14px;
+  color: var(--text-muted); pointer-events: none;
+}
+
+/* ── Device Overview: clean selected / hover rows ─────────────────────────
+   Selected row = plain white (blue bar on the left is kept via border-left).
+   Hover = soft light blue. Selected stays white even while hovered. */
+#devices-table-body tr:hover td { background: #EAF3FF; }
+#devices-table-body tr.row-selected td,
+#devices-table-body tr.row-selected:hover td { background: #FFFFFF; }
+html:not([data-theme="light"]) #devices-table-body tr:hover td { background: rgba(34,211,238,0.07); }
+html:not([data-theme="light"]) #devices-table-body tr.row-selected td,
+html:not([data-theme="light"]) #devices-table-body tr.row-selected:hover td { background: rgba(255,255,255,0.05); }
+
+/* ── Live-update pulse: only the newest point, once ───────────────────────
+   Positioned by JS over the chart's rightmost point each time a live poll
+   appends a genuinely new minute. The rest of the line is never redrawn
+   with animation, so only this single ring flashes - never the old data. */
+.chart-pulse-dot {
+  position: absolute;
+  width: 14px; height: 14px;
+  margin-left: -7px; margin-top: -7px;
+  border-radius: 50%;
+  background: #0EA5E9;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+.chart-pulse-dot.is-pulsing { animation: chart-point-pulse 0.9s ease-out 1; }
+@keyframes chart-point-pulse {
+  0%   { opacity: 0.9; box-shadow: 0 0 0 0 rgba(14,165,233,0.55); transform: scale(0.6); }
+  60%  { opacity: 0.35; box-shadow: 0 0 0 14px rgba(14,165,233,0); transform: scale(1.4); }
+  100% { opacity: 0; box-shadow: 0 0 0 16px rgba(14,165,233,0); transform: scale(1.6); }
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let selectedDeviceId = null;
+let selectedDeviceName = null;
+let allDevices = [];
+
+/* ── Persist the selected date range across page navigation ────────────────
+   This is a normal server-rendered page (full page loads via <a href>), so
+   in-memory JS state is lost every time the user leaves and comes back to
+   Dashboard. localStorage survives full page reloads/navigation, so the
+   Start/End date the user picked is restored instead of always resetting
+   to the last-13-days default. */
+const DASH_START_KEY = 'dashboard_start_date';
+const DASH_END_KEY   = 'dashboard_end_date';
+
+// "Today" comes from the server (Asia/Bangkok, UTC+7) - NOT from the
+// browser's clock/timezone, and NOT from toISOString() (which is UTC and
+// gives yesterday's date between 00:00-07:00 Thai time).
+const TODAY_TH = "{{ today_th }}";
+const fmtDate = d => d.toISOString().split('T')[0];   // d is built in UTC below, so no shift
+const nowD = new Date(TODAY_TH + 'T00:00:00Z');
+const agoD = new Date(nowD);
+agoD.setUTCDate(agoD.getUTCDate() - 13);
+
+// Ignore a saved range whose end date is later than today (Thai time) -
+// e.g. left over from a wrong clock - and fall back to the default range.
+let savedStartDate = localStorage.getItem(DASH_START_KEY);
+let savedEndDate   = localStorage.getItem(DASH_END_KEY);
+if(savedEndDate && savedEndDate > TODAY_TH){ savedStartDate = null; savedEndDate = null; }
+
+document.getElementById('start-date').value = savedStartDate || fmtDate(agoD);
+document.getElementById('end-date').value   = savedEndDate   || fmtDate(nowD);
+
+function saveDashboardDateRange(){
+  localStorage.setItem(DASH_START_KEY, document.getElementById('start-date').value);
+  localStorage.setItem(DASH_END_KEY, document.getElementById('end-date').value);
+}
+document.getElementById('start-date').addEventListener('change', saveDashboardDateRange);
+document.getElementById('end-date').addEventListener('change', saveDashboardDateRange);
+
+/* Site-wide time format: "YYYY-MM-DD HH:MM:SS", straight from the backend
+   (already Thai local time) WITHOUT letting the browser reinterpret it in
+   its own timezone — we just slice the string instead of building a Date
+   object from it. */
+function fmtRecorded(s){
+  if(!s) return '—';
+  return window.NetworkTopology.fmtLastUpdated(s);
+}
+
+/* ── "Last updated:" label — driven by the DATABASE, not the browser clock ─
+   - No device selected: shows the moment the most recent round became
+     COMPLETE (every floor/access-device had recorded a row), taken from
+     /api/dashboard/summary's last_complete_at. It only advances once all
+     floors have written to the DB for that round, and it changes as soon
+     as that happens (live polling below), not on a fixed wall-clock timer.
+   - A device selected: shows that device's own RECORD AT (same value as
+     the Device Overview row for it), so the label always matches the row
+     the user clicked into. */
+function renderLastUpdated(ts){
+  const el = document.getElementById('last-updated-label');
+  if(!el) return;
+  el.textContent = `Last updated: ${fmtRecorded(ts)}`;
+}
+
+function setDashboardHeader(deviceName){
+  const sub = document.getElementById('dashboard-subtitle');
+  if(deviceName){
+    const row = (window.deviceRows || []).find(d=>d.device_name===deviceName);
+    const isOnline = row ? row.status === 'Online' : true;
+    const col = isOnline ? '#059669' : '#dc2626';
+    const light = isLightMode();
+    const bg = isOnline
+      ? (light ? '#F0FDF4' : 'rgba(16,185,129,0.12)')
+      : (light ? '#FEF2F2' : 'rgba(244,63,94,0.12)');
+    const border = isOnline
+      ? (light ? 'rgba(5,150,105,0.25)' : 'rgba(16,185,129,0.3)')
+      : (light ? 'rgba(225,29,72,0.25)' : 'rgba(244,63,94,0.3)');
+    sub.innerHTML = `
+      <div style="display:inline-flex;align-items:center;gap:8px;background:${bg};
+                  border:1px solid ${border};border-radius:9999px;padding:5px 16px;">
+        <span style="font-size:14px;font-weight:700;color:var(--text-main);font-family:'Outfit', sans-serif">
+          ${deviceName}
+        </span>
+        <span style="width:1px;height:14px;background:${border}"></span>
+        <span style="font-size:11.5px;font-weight:700;color:${col};letter-spacing:0.04em">
+          ${isOnline ? 'ONLINE' : 'OFFLINE'}
+        </span>
+      </div>`;
+  } else {
+    sub.innerHTML = `<span style="color:#64748b;font-size:14px">Network monitoring and performance overview</span>`;
+  }
+}
+
+async function loadSummary(){
+  const start=document.getElementById('start-date').value, end=document.getElementById('end-date').value;
+  let url = `/api/dashboard/summary?start=${start}&end=${end}`;
+  if(selectedDeviceId) url += `&device_id=${encodeURIComponent(selectedDeviceId)}`;
+  const r=await fetch(url), d=await r.json();
+  document.getElementById('stat-total').textContent     = d.total;
+  document.getElementById('stat-online').textContent    = d.online;
+  document.getElementById('stat-offline').textContent   = d.offline;
+  document.getElementById('stat-throughput').textContent= d.avg_throughput;
+  // Aggregate ("all devices") mode owns the label here; device mode's label
+  // comes from loadDevicesTable() instead, since it needs that device's row.
+  if(!selectedDeviceId) renderLastUpdated(d.last_complete_at);
+}
+
+let chartThroughput = null;
+let lastChartSignature = null; // fingerprint of the last-rendered chart data,
+                                // so the 5s live poll only redraws the chart
+                                // when the database actually gave back new
+                                // data - not on every single poll (which was
+                                // destroying/rebuilding Chart.js every 5s and
+                                // looked like flicker, even though real
+                                // readings only land about once a minute).
+let lastChartKey    = null;    // fingerprint of start|end|device ONLY (not
+                                // the data) - identifies "still the same
+                                // view", so a live tick that appends one new
+                                // minute can be told apart from switching
+                                // device/date range (which should redraw
+                                // normally, not "live-append").
+let lastChartLabels = [];
+let lastChartValues = [];
+
+// Every view (a single day's minutes, or a multi-day range's daily
+// averages) shows a fixed window of POINTS_PER_VIEW dots sized to fill the
+// card's width, and scrolls once there are more points than that — instead
+// of squeezing extra points into the same width (which forces Chart.js to
+// hide/merge labels via autoSkip). Nothing is ever skipped, decimated, or
+// merged; scrolling just brings the rest into view.
+const POINTS_PER_VIEW = 14;
+// Browsers refuse to draw canvases wider than ~32,767px (Chrome) / ~16,384px
+// (Safari/Firefox on some builds) - the chart silently turns blank. Keep the
+// scrolling canvas safely below that no matter how many points there are.
+const MAX_CANVAS_WIDTH = 12000;
+
+/* ── Live-update pulse: only the new rightmost point, once ───────────────
+   Positions the little ring (see .chart-pulse-dot in <style>) over the
+   chart's newest point and restarts its one-shot animation. Called only
+   when a live poll actually appended a new minute - never on a normal
+   redraw - so the rest of the line is never touched. */
+function pulseLatestPoint(canvas, meta){
+  const dot = document.getElementById('chart-pulse-dot');
+  if(!dot || !meta || !meta.length) return;
+  const pt = meta[meta.length-1];
+  if(!pt || pt.x==null || pt.y==null) return;
+  dot.style.left = (canvas.offsetLeft + pt.x) + 'px';
+  dot.style.top  = (canvas.offsetTop  + pt.y) + 'px';
+  dot.classList.remove('is-pulsing');
+  void dot.offsetWidth; // force reflow so the animation restarts every time
+  dot.classList.add('is-pulsing');
+}
+
+
+function positionXTitle(){
+  const w=document.getElementById('throughput-chart-scroll'), t=document.getElementById('chart-x-title');
+  if(!w||!t) return;
+  const sb = w.offsetHeight - w.clientHeight;      // scrollbar height (0 if none)
+  t.style.bottom = (sb + 8 + 2) + 'px';            // 8px = wrapper padding-bottom
+}
+function setXTitle(text){
+  const t=document.getElementById('chart-x-title');
+  if(t) t.textContent = text;
+  positionXTitle();
+}
+window.addEventListener('resize', positionXTitle);
+
+async function loadChart(){
+  const start=document.getElementById('start-date').value, end=document.getElementById('end-date').value;
+  let url=`/api/dashboard/chart?start=${start}&end=${end}`;
+  if(selectedDeviceId) url+=`&device_id=${encodeURIComponent(selectedDeviceId)}`;
+  const r=await fetch(url), data=await r.json();
+
+  // Same start/end date -> backend returns fine-grained points across that
+  // day (roughly one per minute) instead of a single daily average, so show
+  // the time of day (HH:MM) on the x-axis instead of the date.
+  const sameDay = start === end;
+  const chartKey = `${start}|${end}|${selectedDeviceId||''}`;
+
+  const labels = data.map(d=>{
+    if(sameDay){
+      const parts = String(d.date).trim().split(' ');
+      const timePart = parts[1] || parts[0] || '';
+      return timePart.substring(0,5);
+    }
+    const dt = new Date(d.date+'T00:00:00');
+    return dt.toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
+  });
+  const tput=data.map(d=>d.throughput); // every point here is a day/minute that actually has data - no null placeholders, so the line only ever connects real points
+
+  // Nothing new since the last render (still the same start/end/device and
+  // the same values) -> skip everything entirely. The chart only actually
+  // updates when a new minute's row has really landed in the database, in
+  // sync with "Last updated", instead of every 5s tick.
+  const signature = JSON.stringify({ start, end, device: selectedDeviceId, labels, tput });
+  if(signature === lastChartSignature && chartThroughput) return;
+
+  const canvas = document.getElementById('throughputChart');
+  const wrapper = document.getElementById('throughput-chart-scroll');
+  // Only need to scroll once there are more than POINTS_PER_VIEW points —
+  // otherwise everything already fits in the card's own width, so let
+  // Chart.js size the canvas itself (its normal responsive behaviour).
+  const fixedWidth = labels.length > POINTS_PER_VIEW;
+  // Fill the whole card width with exactly POINTS_PER_VIEW points, instead
+  // of a fixed px/point (which left blank space on the right on smaller
+  // screens, or overflowed too early on wide ones). Extra points beyond
+  // POINTS_PER_VIEW still push the canvas wider than the wrapper and
+  // scroll off.
+  const pxPerUnit = wrapper.clientWidth / POINTS_PER_VIEW;
+
+  function computeWidth(){
+    if(!fixedWidth) return null;
+    // Never exceed MAX_CANVAS_WIDTH, otherwise the canvas goes blank.
+    return Math.min(MAX_CANVAS_WIDTH, Math.max(wrapper.clientWidth, labels.length * pxPerUnit));
+  }
+
+  // Every view now just scrolls natively (drag the scrollbar under the
+  // chart); there's no separate nav bar to show/hide any more.
+
+  // Same view (same device + date range) as the last render, and the new
+  // data is exactly the old data with one or more new minutes appended at
+  // the end -> this is a LIVE update. Update the existing chart IN PLACE
+  // (no destroy/rebuild, no built-in animation) so the already-drawn line
+  // is never redrawn/flickers, then smoothly scroll to and pulse only the
+  // new rightmost point once.
+  const isLiveAppend = chartThroughput && sameDay && chartKey === lastChartKey
+    && labels.length > lastChartLabels.length
+    && JSON.stringify(labels.slice(0, lastChartLabels.length)) === JSON.stringify(lastChartLabels);
+
+  lastChartSignature = signature;
+  lastChartKey = chartKey;
+  lastChartLabels = labels;
+  lastChartValues = tput;
+
+  if(isLiveAppend){
+    const wasNearLiveEdge = wrapper.scrollWidth - (wrapper.scrollLeft + wrapper.clientWidth) < pxPerUnit * 2;
+
+    const wantWidth = computeWidth();
+    canvas.style.width = wantWidth + 'px';
+
+    chartThroughput.data.labels = labels;
+    chartThroughput.data.datasets[0].data = tput;
+    chartThroughput.resize(wantWidth, 340);
+    chartThroughput.update('none'); // no built-in animation - the pulse dot alone marks what's new
+
+    // Only auto-follow the new point if the user was already looking at
+    // the live edge - don't yank them forward if they scrolled back to
+    // look at an earlier part of the day.
+    if(wasNearLiveEdge) wrapper.scrollTo({ left: wrapper.scrollWidth, behavior: 'smooth' });
+
+    pulseLatestPoint(canvas, chartThroughput.getDatasetMeta(0).data);
+    return;
+  }
+
+  // Full rebuild: first load, or the device/date range actually changed.
+  const dot = document.getElementById('chart-pulse-dot');
+  if(dot) dot.classList.remove('is-pulsing');
+  if(chartThroughput) chartThroughput.destroy();
+
+  if(fixedWidth){
+    const wantWidth = computeWidth();
+    canvas.style.width = wantWidth + 'px';
+    canvas.style.height = '340px';
+    canvas.width = wantWidth;
+    canvas.height = 340;
+  } else {
+    // 14 days or fewer: no horizontal scrolling needed - let Chart.js size
+    // the canvas itself again (its normal responsive behaviour), instead
+    // of leaving it pinned to the small fixed pixel box the scrolling
+    // views use. Clearing every inline size we set for those views is what
+    // restores the chart to its original, full card-height appearance.
+    canvas.style.width = '';
+    canvas.style.height = '';
+    canvas.removeAttribute('width');
+    canvas.removeAttribute('height');
+  }
+
+  const ctx=canvas.getContext('2d');
+  const light = typeof isLightMode === 'function' && isLightMode();
+  // One single blue hue that fades out (no cyan->green / yellowish mid-tones).
+  // Built from the real plot area so it spans exactly line -> x-axis.
+  const fillRGB = light ? '59,130,246' : '56,189,248';
+  const fillTop = light ? 0.18 : 0.34;
+  const grad = (context) => {
+    const area = context.chart.chartArea;
+    if(!area) return `rgba(${fillRGB},0.10)`;
+    const g = context.chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+    g.addColorStop(0,    `rgba(${fillRGB},${fillTop})`);
+    g.addColorStop(0.45, `rgba(${fillRGB},${fillTop * 0.45})`);
+    g.addColorStop(1,    `rgba(${fillRGB},0)`);
+    return g;
+  };
+  const lineColor = light ? '#4F86F7' : '#38BDF8';
+  const axisColor = light ? '#64748B' : '#6C8DB0';
+  const gridColor = light ? 'rgba(100,116,139,.10)' : 'rgba(99,143,193,.08)';
+
+  chartThroughput=new Chart(ctx,{
+    type:'line',
+    data:{labels,datasets:[{label:'Avg Throughput (Mbps)',data:tput,borderColor:lineColor,backgroundColor:grad,borderWidth:2.5,pointRadius:0,pointHoverRadius:6,pointHitRadius:14,pointBackgroundColor:light?'#FFFFFF':'#082038',pointBorderColor:lineColor,pointBorderWidth:2.5,pointHoverBorderWidth:2.5,tension:0.4,fill:true,spanGaps:false}]},
+    options:{
+      responsive:!fixedWidth,
+      maintainAspectRatio:!fixedWidth,
+      aspectRatio:3.6,
+      animation:false, // built-in entrance animation looked like the whole line "flashing" on every redraw; the pulse dot alone marks new data
+      interaction:{mode:'index',intersect:false},
+      plugins:{legend:{display:false},tooltip:{backgroundColor:light?'#FFFFFF':'#1A2744',titleColor:light?'#2F62D8':'#7FA3C4',bodyColor:light?'#334155':'#E2EBF8',borderColor:light?'rgba(47,98,216,.25)':'rgba(99,143,193,.2)',borderWidth:1,padding:12,cornerRadius:10,callbacks:{label:c=>c.parsed.y==null?' No data':` ${c.parsed.y} Mbps`}}},
+      scales:{
+        x:{
+          grid:{color:gridColor},
+          // offset:false pins the first and last data point exactly at the
+          // left/right edges of the plot area (instead of Chart.js's
+          // default category-scale padding, which left visible empty
+          // space before the first point and after the last one - the
+          // "not flush right" gap). This is set for every mode so the
+          // chart always looks the same: full-width, flush and symmetric
+          // on both sides, whether it's the same-day scrolling view or the
+          // always-14-day multi-day view.
+          offset:false,
+          // Labels always stay horizontal (never rotated diagonally) -
+          // each point gets enough width to not overlap its neighbour.
+          ticks:{color:axisColor,font:{size:12},maxRotation:0,minRotation:0,autoSkip:(!fixedWidth || labels.length > POINTS_PER_VIEW*8),maxTicksLimit:(labels.length > POINTS_PER_VIEW*8 ? 40 : undefined)},
+          title:{display:true,text:' ',color:axisColor,font:{size:12}} // blank: just reserves room; the visible Date/Time label is the fixed HTML #chart-x-title
+        },
+        y:{
+          grid:{color:gridColor},
+          title:{display:true,text:'Throughput (Mbps)',color:axisColor,font:{size:12}},
+          ticks:{color:axisColor,font:{size:12}},
+          beginAtZero:true
+        }
+      }
+    }
+  });
+
+  setXTitle(sameDay ? 'Time' : 'Date');
+
+  // Fixed-width views (same-day, or a >14-day range): keep the scroll
+  // position pinned to the most recent (rightmost) point - today's minute
+  // or the most recent day - so opening/refreshing the chart shows current
+  // data first instead of resetting to the oldest point on the left.
+  if(fixedWidth) wrapper.scrollLeft = wrapper.scrollWidth;
+}
+
+// Topology is only redrawn when something it shows actually changed
+// (status / wiring / name...), so it can be polled on the fast 5s tick
+// together with Device Overview without flicker or resetting zoom/pan.
+let lastTopoSignature = null;
+const topoSig = list => JSON.stringify(list.map(d=>[d.id,d.name,d.ip_address,d.type,d.category,d.status,d.location,d.connected_to]));
+
+/* Topology follows Device Overview: every time the Device Overview table
+   data arrives, copy each switch's Online/Offline into the topology's own
+   device list and redraw immediately if any of them changed. Same response,
+   same moment - so they can never disagree and nothing waits for a refresh. */
+function syncTopologyStatus(rows){
+  if(!Array.isArray(allDevices) || !allDevices.length || !Array.isArray(rows)) return;
+  let changed = false;
+  rows.forEach(r=>{
+    const dev = allDevices.find(d=>String(d.id)===String(r.device_id));
+    if(dev && r.status && dev.status !== r.status){ dev.status = r.status; changed = true; }
+  });
+  if(changed){
+    lastTopoSignature = topoSig(allDevices);
+    renderDashTopology(allDevices);
+  }
+}
+
+async function loadDeviceMetadata(){
+  try{
+    const r=await fetch('/api/devices', {cache:'no-store'});
+    if(!r.ok) return;
+    const data=await r.json();
+    if(!Array.isArray(data)) return;
+    const sig = topoSig(data);
+    if(sig === lastTopoSignature) return;
+    lastTopoSignature = sig;
+    allDevices = data;
+    renderDashTopology(allDevices);
+  }catch(e){ /* keep the current diagram if a poll fails */ }
+}
+
+async function loadDevicesTable(){
+  const r=await fetch('/api/dashboard/devices', {cache:'no-store'});
+  const devices=await r.json();
+  window.deviceRows = devices;
+  syncTopologyStatus(devices);
+  // Device-filtered mode: the label tracks THIS device's own RECORD AT, so
+  // it stays in sync with the row below the instant that floor's reading
+  // lands in the database.
+  if(selectedDeviceId){
+    const row = devices.find(d=>d.device_id===selectedDeviceId);
+    renderLastUpdated(row ? row.recorded_at : null);
+  }
+  const tbody=document.getElementById('devices-table-body');
+  tbody.innerHTML=devices.map(d=>{
+    const sel=selectedDeviceId===d.device_id;
+    const statusClass=d.status==='Online'?'badge-online':'badge-offline';
+    return `<tr onclick="selectDevice(${d.device_id},'${String(d.device_name).replace(/'/g,"\\'")}')" class="cursor-pointer transition ${sel?'row-selected':''}"
+      style="border-left:3px solid ${sel?'#0EA5E9':'transparent'}">
+      <td class="font-medium" style="color:${sel?'#3A7CA5':''}">
+        <span style="display:inline-flex;align-items:center;gap:8px">
+          ${sel?`<span style="width:8px;height:8px;border-radius:50%;background:#0EA5E9;display:inline-block;flex-shrink:0"></span>`:''}
+          ${d.device_name}
+        </span>
+      </td>
+      <td class="font-mono text-sm">${d.ip_address}</td>
+      <td class="text-sm">${d.location}</td>
+      <td style="font-weight:700;color:${d.status==='Online'?'#3A7CA5':'#94a3b8'}">${d.throughput!=null ? d.throughput+' Mbps':'—'}</td>
+      <td class="text-gray-400 text-xs" style="white-space:nowrap">${window.NetworkTopology.fmtLastUpdated(d.recorded_at)}</td>
+      <td class="c-center"><span class="${statusClass}">${d.status}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function selectDevice(deviceId, deviceName){
+  selectedDeviceId=deviceId;
+  selectedDeviceName=deviceName;
+  setDashboardHeader(deviceName);
+  const sub=document.getElementById('chart-subtitle');
+  sub.textContent=`Showing throughput for: ${deviceName} — data collected every 1 minute`;
+  document.getElementById('clear-filter-btn').classList.remove('hidden');
+  loadSummary();
+  loadChart();
+  loadDevicesTable();
+  dashTopoSelectByDeviceId(deviceId);
+}
+
+function clearDeviceFilter(){
+  selectedDeviceId=null;
+  selectedDeviceName=null;
+  setDashboardHeader(null);
+  document.getElementById('chart-subtitle').textContent='Network throughput (Mbps) — data collected every 1 minute — click a device to view its speed';
+  document.getElementById('clear-filter-btn').classList.add('hidden');
+  loadSummary();
+  loadChart(); loadDevicesTable();
+  dashTopoClearSelection();
+}
+
+function applyFilter(){ saveDashboardDateRange(); loadSummary(); loadChart(); loadDevicesTable(); }
+
+// ══════════════════════════════════════════════════════════════════════════
+// NETWORK TOPOLOGY — auto-laid-out from the SAME /api/devices data + real
+// connected_to relationships as the Devices page (via the shared
+// NetworkTopology helpers). Only Router / Core Switch / Access Switches are
+// shown; VPC / Client / Server rows are filtered out. No fixed x/y — the
+// layout is recomputed every time devices are added, edited, or removed.
+// ══════════════════════════════════════════════════════════════════════════
+const DNT = window.NetworkTopology;
+let dashTopoZoomLevel = 1;
+let dashTopoPanX = 0, dashTopoPanY = 0;
+let dashTopoSelectedId = null;
+let dashTopoLastSig = null;
+let dashTopoLayoutCache = null;
+
+const DASH_TOPO_ICONS = {
+  Router: `<svg width="20" height="20" fill="none" stroke="#38BDF8" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
+  Switch: `<svg width="20" height="20" fill="none" stroke="#A78BFA" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="10" rx="2"/><line x1="6" y1="12" x2="6" y2="12.01" stroke-width="3"/><line x1="10" y1="12" x2="10" y2="12.01" stroke-width="3"/><line x1="14" y1="12" x2="14" y2="12.01" stroke-width="3"/></svg>`,
+  Default: `<svg width="20" height="20" fill="none" stroke="#34D399" stroke-width="2" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/></svg>`
+};
+
+function dashTopoApplyTransform(){
+  const canvas = document.getElementById('dash-topo-canvas');
+  if (!canvas || !dashTopoLayoutCache) return;
+  canvas.style.transform =
+    `translate(calc(-50% + ${dashTopoPanX}px), calc(-50% + ${dashTopoPanY}px)) scale(${dashTopoZoomLevel})`;
+  const label = document.getElementById('dash-topo-zoom-label');
+  if (label) label.textContent = Math.round(dashTopoZoomLevel * 100) + '%';
+}
+function dashTopoZoom(delta){
+  dashTopoZoomLevel = Math.min(2.2, Math.max(0.35, +(dashTopoZoomLevel + delta).toFixed(2)));
+  dashTopoApplyTransform();
+}
+function dashTopoZoomReset(){
+  // "Reset" fully restores the topology to its untouched state: zoom/pan
+  // back to default AND clear whatever device was clicked/highlighted
+  // (and the throughput-chart filter that click applied), not just the
+  // zoom level. Previously this only reset zoom/pan, so a clicked device
+  // stayed highlighted (and the chart stayed filtered) after "Reset".
+  dashTopoZoomLevel = 1; dashTopoPanX = 0; dashTopoPanY = 0;
+  if (dashTopoSelectedId != null) {
+    clearDeviceFilter();
+  }
+  dashTopoApplyTransform();
+}
+function dashTopoFitToView(maxScale){
+  const vp = document.getElementById('dash-topo-viewport');
+  if (!vp || !dashTopoLayoutCache) return;
+  const { canvasW, canvasH } = dashTopoLayoutCache;
+  const cap = (typeof maxScale === 'number') ? maxScale : 1.3;
+  const scale = Math.min(cap, (vp.clientWidth - 40) / canvasW, (vp.clientHeight - 40) / canvasH);
+  dashTopoZoomLevel = Math.max(0.35, +scale.toFixed(2));
+  dashTopoPanX = 0; dashTopoPanY = 0;
+  dashTopoApplyTransform();
+}
+
+(function initDashTopoPan(){
+  const vp = document.getElementById('dash-topo-viewport');
+  if (!vp) return;
+  let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+  vp.addEventListener('wheel', e => {
+    e.preventDefault();
+    dashTopoZoomLevel = Math.min(2.2, Math.max(0.35, dashTopoZoomLevel + (e.deltaY > 0 ? -0.1 : 0.1)));
+    dashTopoApplyTransform();
+  }, { passive:false });
+  vp.addEventListener('mousedown', e => {
+    if (e.target.closest('#dash-topo-nodes > div')) return; // let node clicks through
+    dragging = true; sx = e.clientX; sy = e.clientY; ox = dashTopoPanX; oy = dashTopoPanY;
+    vp.style.cursor = 'grabbing';
+  });
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    dashTopoPanX = ox + (e.clientX - sx); dashTopoPanY = oy + (e.clientY - sy);
+    dashTopoApplyTransform();
+  });
+  window.addEventListener('mouseup', () => { dragging = false; vp.style.cursor = 'grab'; });
+})();
+
+function renderDashTopology(rawList){
+  const nodesEl = document.getElementById('dash-topo-nodes');
+  const linesEl = document.getElementById('dash-topo-lines');
+  const emptyEl = document.getElementById('dash-topo-empty');
+  if (!nodesEl) return;
+
+  // Same filtered set + same connection data as the Devices page.
+  const list = DNT.filterDevices(rawList);
+  window._dashTopoDevices = list;
+
+  if (!list.length) {
+    nodesEl.innerHTML = ''; linesEl.innerHTML = '';
+    emptyEl.style.display = 'flex';
+    dashTopoLayoutCache = null;
+    return;
+  }
+  emptyEl.style.display = 'none';
+
+  const layout = DNT.computeLayout(list, { nodeW: 168, nodeH: 66, hgap: 40, vgap: 108, pad: 40 });
+  DNT.addClientTier(layout, list, { clientW: 128, clientH: 60, vgap: 78, pad: 40, clientsPerSwitch: 60 });
+  dashTopoLayoutCache = layout;
+  const { byId, childrenOf, pos, canvasW, canvasH, clientPos } = layout;
+
+  const canvas = document.getElementById('dash-topo-canvas');
+  canvas.style.width  = canvasW + 'px';
+  canvas.style.height = canvasH + 'px';
+  linesEl.setAttribute('width', canvasW);
+  linesEl.setAttribute('height', canvasH);
+  linesEl.setAttribute('viewBox', `0 0 ${canvasW} ${canvasH}`);
+
+  const activeChain = dashTopoSelectedId != null ? DNT.chainFor(dashTopoSelectedId, byId, childrenOf) : null;
+
+  // All siblings under the same parent share one pivot point (the parent's
+  // bottom-center), so a farther sibling's horizontal segment necessarily
+  // passes straight through the x-range of any nearer sibling on the same
+  // side. With translucent colors, whichever segment is drawn LAST wins
+  // that shared stretch. Sorting so the farthest sibling is drawn first and
+  // the nearest last means each sibling's own color always paints over/on
+  // top of its own stretch, instead of a farther offline sibling's red
+  // bleeding backward over a nearer online sibling's line.
+  const edges = [];
+  list.forEach(d => {
+    const pid = d.connected_to;
+    if (pid && pos[pid] && pos[d.id]) {
+      const p = pos[pid], c = pos[d.id];
+      const x1 = p.x + p.w / 2, y1 = p.y + p.h;
+      const x2 = c.x + c.w / 2, y2 = c.y;
+      edges.push({ d, pid, x1, y1, x2, y2, dist: Math.abs(x2 - x1) });
+    }
+  });
+  edges.sort((a, b) => b.dist - a.dist);
+
+  let linesHtml = '';
+  edges.forEach(({ d, pid, x1, y1, x2, y2 }) => {
+      const midY = y1 + (y2 - y1) / 2;
+      const bothOnline = d.status === 'Online' && byId[pid].status === 'Online';
+      const inChain = activeChain && activeChain.has(pid) && activeChain.has(d.id);
+      // Color always reflects real status (green = both ends online, red =
+      // either end offline), matching the legend at all times. Clicking a
+      // device only emphasizes its path (thicker, glowing) - it no longer
+      // decides the color itself.
+      const baseColor = bothOnline
+        ? (isLightMode() ? '#3CCBA080' : '#5EDDB466')
+        : (isLightMode() ? '#ef444488' : '#ef444466');
+      let stroke = baseColor, width = 2.5, glow = '', dash = '';
+      if (bothOnline && !isLightMode() && !inChain) glow = 'filter:drop-shadow(0 0 3px #5EDDB444)';
+      if (inChain) {
+        stroke = bothOnline ? (isLightMode() ? '#2FBF95' : '#5EDDB4') : '#ef4444';
+        width = 3;
+        glow = isLightMode() ? '' : `filter:drop-shadow(0 0 4px ${stroke}66)`;
+        if (bothOnline) glow += ';opacity:.85';
+      }
+      linesHtml += `<path d="M ${x1} ${y1} V ${midY} H ${x2} V ${y2}" stroke="${stroke}" stroke-width="${width}" fill="none" ${dash} style="${glow};transition:stroke .25s,stroke-width .25s"/>`;
+      linesHtml += `<circle cx="${x1}" cy="${y1}" r="3.5" fill="${stroke}"/><circle cx="${x2}" cy="${y2}" r="3.5" fill="${stroke}"/>`;
+  });
+  // Cosmetic "N Clients / Floor X" tier under each Access Switch.
+  Object.keys(clientPos).forEach(devId => {
+    const cp = clientPos[devId];
+    const p = pos[devId];
+    if (!p) return;
+    const x1 = p.x + p.w / 2, y1 = p.y + p.h;
+    const x2 = cp.x + cp.w / 2, y2 = cp.y;
+    const clientLine = isLightMode() ? '#CBD5E1' : '#334155';
+    // Elbow connector (same shape as every other link): the client box can
+    // sit off to the side of its switch when a device is wired in next to
+    // it, so a straight vertical drop from the switch's centre would land
+    // in empty space and look "broken". Route to the box's own centre.
+    const midY = y1 + (y2 - y1) / 2;
+    linesHtml += `<path d="M ${x1} ${y1} V ${midY} H ${x2} V ${y2}" stroke="${clientLine}" stroke-width="1.6" fill="none" stroke-dasharray="4 3"/>`;
+    linesHtml += `<circle cx="${x1}" cy="${y1}" r="3" fill="${clientLine}"/><circle cx="${x2}" cy="${y2}" r="3" fill="${clientLine}"/>`;
+  });
+  linesEl.innerHTML = linesHtml;
+
+  nodesEl.innerHTML = list.map(d => {
+    const p = pos[d.id];
+    if (!p) return '';
+    const icon = DASH_TOPO_ICONS[d.category] || DASH_TOPO_ICONS.Default;
+    const col  = d.status === 'Online' ? (isLightMode() ? '#2FBF95' : '#5EDDB4') : DNT.statusColor(d.status);
+    const sel  = String(dashTopoSelectedId) === String(d.id);
+    const off  = d.status !== 'Online';
+    const offBorder = isLightMode() ? 'rgba(225,29,72,.45)' : 'rgba(251,113,133,.50)';
+    const offBg = 'linear-gradient(rgba(244,63,94,.07),rgba(244,63,94,.07)), var(--surface)';
+    const dimmed = activeChain && !activeChain.has(d.id);
+    return `<div onclick="dashTopoSelectNode(${d.id})"
+        style="position:absolute;left:${p.x}px;top:${p.y}px;width:${p.w}px;height:${p.h}px;
+        background:${sel ? 'var(--primary-glow)' : (off ? offBg : 'var(--surface)')};border:1.5px solid ${sel ? 'var(--primary)' : (off ? offBorder : 'var(--border)')};border-radius:10px;
+        display:flex;align-items:center;gap:9px;padding:0 12px;cursor:pointer;opacity:${dimmed ? 0.28 : 1};
+        box-shadow:${sel ? (isLightMode() ? '0 0 0 3px rgba(47,98,216,.25)' : '0 0 0 3px rgba(56,189,248,.2), 0 0 16px rgba(56,189,248,.35)') : (isLightMode() ? '0 1px 3px rgba(15,23,42,0.06)' : 'none')};transition:.15s">
+      <div style="flex-shrink:0;opacity:${off ? 0.55 : 1}">${icon}</div>
+      <div style="min-width:0">
+        <div style="font-size:13px;font-weight:600;color:var(--text-main);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escDT(d.name)}</div>
+        <div style="font-size:10.5px;color:var(--text-muted);font-family:'IBM Plex Mono', monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escDT(d.ip_address)}</div>
+        <div style="display:flex;align-items:center;gap:4px;margin-top:2px">
+          <span style="width:6px;height:6px;border-radius:50%;background:${col};${isLightMode() ? '' : `box-shadow:0 0 4px ${col};`}display:inline-block"></span>
+          <span style="font-size:10px;font-weight:${off ? 700 : 500};color:${col}">${DNT.statusLabel(d.status)}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('') + Object.keys(clientPos).map(devId => {
+    const cp = clientPos[devId];
+    return `<div style="position:absolute;left:${cp.x}px;top:${cp.y}px;width:${cp.w}px;height:${cp.h}px;
+        background:var(--surface);border:1px dashed var(--border);border-radius:10px;
+        display:flex;align-items:center;gap:8px;padding:0 10px;opacity:${activeChain && !activeChain.has(Number(devId)) ? 0.28 : 1}">
+      <svg width="18" height="18" fill="none" stroke="var(--text-muted)" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0"><rect x="3" y="4" width="18" height="12" rx="2"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="16" x2="12" y2="20"/></svg>
+      <div style="min-width:0">
+        <div style="font-size:12px;font-weight:600;color:var(--text-main);white-space:nowrap">${escDT(cp.label)}</div>
+        <div style="font-size:10.5px;color:var(--text-muted);white-space:nowrap">${escDT(cp.sub)}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Re-center + re-fit whenever devices/connections change (not on plain
+  // node clicks), so the diagram always sits in the middle of the viewport.
+  const dashSig = list.map(d => d.id + ':' + (d.connected_to || 0)).join('|') + '@' + canvasW + 'x' + canvasH;
+  if (dashSig !== dashTopoLastSig) {
+    dashTopoLastSig = dashSig;
+    dashTopoFitToView(1);
+  } else {
+    dashTopoApplyTransform();
+  }
+}
+
+function escDT(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function dashTopoSelectNode(id){
+  const list = window._dashTopoDevices || [];
+  const dev = list.find(d => String(d.id) === String(id));
+  dashTopoSelectedId = id;
+  renderDashTopology(allDevices);
+  // Main Router / Core Switch have no throughput readings of their own, so
+  // clicking them only highlights their path in the topology (status colour)
+  // and leaves the graph / summary / device table exactly as they were.
+  // Only Access Devices (Switch01-04) drive the throughput graph.
+  if (dev && dev.type === 'Access Device') selectDevice(dev.id, dev.name);
+}
+function dashTopoClearSelection(){
+  dashTopoSelectedId = null;
+  renderDashTopology(allDevices);
+}
+function dashTopoSelectByDeviceId(id){
+  dashTopoSelectedId = id;
+  renderDashTopology(allDevices);
+}
+
+
+renderLastUpdated(null);
+loadSummary(); loadChart(); loadDevicesTable(); loadDeviceMetadata();
+
+/* ── Auto-refresh (live monitoring) ───────────────────────────────────────
+   Two speeds, both driven by the database rather than the browser clock:
+
+   - LIVE tick (every few seconds): re-pulls Device Overview + the summary
+     stats. This is what makes "RECORD AT" in Device Overview, the
+     "Last updated:" label, and the Avg Throughput card update the moment
+     each floor's row actually lands in the database - true monitoring,
+     not a once-a-minute jump. When Start Date = End Date (the same-day,
+     per-minute chart view), the throughput chart is ALSO refreshed on
+     this fast tick, so its last (rightmost) point moves in lockstep with
+     "Last updated" instead of lagging a minute behind it.
+   - HEAVY tick (every 60s, matching the ~1-reading-per-minute collection
+     rate): rebuilds the topology diagram, and the chart too when a
+     multi-day range is selected (a same-day chart is already covered by
+     the live tick above, so redoing it here would just be wasted work). */
+const LIVE_REFRESH_INTERVAL_MS  = 5 * 1000;   // Device Overview / Last updated / Avg Throughput / same-day chart
+const HEAVY_REFRESH_INTERVAL_MS = 60 * 1000;  // Topology + multi-day chart
+
+function isSameDaySelected(){
+  return document.getElementById('start-date').value === document.getElementById('end-date').value;
+}
+
+function liveRefreshTick(){
+  loadSummary();
+  loadDevicesTable();
+  loadDeviceMetadata();   // topology follows Device Overview status in step
+  if(isSameDaySelected()) loadChart();
+}
+function heavyRefreshTick(){
+  if(!isSameDaySelected()) loadChart();
+  loadDeviceMetadata();
+}
+
+setInterval(liveRefreshTick, LIVE_REFRESH_INTERVAL_MS);
+setInterval(heavyRefreshTick, HEAVY_REFRESH_INTERVAL_MS);
+</script>
+{% endblock %}
